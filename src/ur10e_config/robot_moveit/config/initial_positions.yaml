@@ -1,0 +1,10 @@
+# Default initial positions for ur10e_rg2's ros2_control fake system
+
+initial_positions:
+  gripper_finger_joint: 0
+  robot_elbow_joint: 0
+  robot_shoulder_lift_joint: 0
+  robot_shoulder_pan_joint: 0
+  robot_wrist_1_joint: 0
+  robot_wrist_2_joint: 0
+  robot_wrist_3_joint: 0
