@@ -57,9 +57,9 @@ joint_limits:
     #
     # Refer to https://github.com/ros-industrial/universal_robot/issues/265 for
     # more information.
-    max_position: !degrees  180.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -180.0
+    max_position: 3.141592653589793
+    max_velocity: 3.141592653589793
+    min_position: -3.141592653589793
   robot_shoulder_lift_joint:
     # acceleration limits are not publicly available
     has_acceleration_limits: false
@@ -67,9 +67,9 @@ joint_limits:
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 330.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  120.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 2.094395102393195
+    min_position: -6.283185307179586
   robot_shoulder_pan_joint:
     # acceleration limits are not publicly available
     has_acceleration_limits: false
@@ -77,9 +77,9 @@ joint_limits:
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 330.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  120.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 2.0943951023931953
+    min_position: -6.283185307179586
   robot_wrist_1_joint:
     # acceleration limits are not publicly available
     has_acceleration_limits: false
@@ -87,9 +87,9 @@ joint_limits:
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586
   robot_wrist_2_joint:
     # acceleration limits are not publicly available
     has_acceleration_limits: false
@@ -97,9 +97,9 @@ joint_limits:
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586
   robot_wrist_3_joint:
     # acceleration limits are not publicly available
     has_acceleration_limits: false
@@ -107,6 +107,6 @@ joint_limits:
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586
