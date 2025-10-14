@@ -1,4 +1,0 @@
-[submodule "src/dependencies/ur_description"]
-	path = src/dependencies/ur_description
-	url = https://github.com/UniversalRobots/Universal_Robots_ROS2_Description.git
-	branch = jazzy
