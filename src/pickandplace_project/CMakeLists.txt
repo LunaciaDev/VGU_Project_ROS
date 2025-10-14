@@ -7,13 +7,28 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(rclcpp REQUIRED)
+
+add_executable(robot_planner src/robot_planner.cpp)
+target_include_directories(robot_planner PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(robot_planner PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+ament_target_dependencies(
+  robot_planner
+  "moveit_ros_planning_interface"
+  "rclcpp"
+)
 
 install(
-    DIRECTORY launch
-    DESTINATION share/${PROJECT_NAME}
+  TARGETS robot_planner
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
