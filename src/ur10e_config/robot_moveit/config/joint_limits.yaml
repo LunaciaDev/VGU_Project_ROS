@@ -10,34 +10,34 @@ default_acceleration_scaling_factor: 0.1
 joint_limits:
   gripper_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   gripper_left_inner_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   gripper_left_inner_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   gripper_right_inner_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   gripper_right_inner_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   gripper_right_outer_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
     # UR10e Joint Limit
     # Taken from the default configuration in ur_description
   robot_elbow_joint:
