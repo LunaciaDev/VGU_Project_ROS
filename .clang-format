@@ -1,12 +1,11 @@
----
 BasedOnStyle:  Google
 ColumnLimit:    120
 MaxEmptyLinesToKeep: 1
 SortIncludes: false
 
 Standard:        Auto
-IndentWidth:     2
-TabWidth:        2
+IndentWidth:     4
+TabWidth:        4
 UseTab:          Never
 AccessModifierOffset: -2
 ConstructorInitializerIndentWidth: 2
@@ -76,4 +75,3 @@ BraceWrapping:
     BeforeCatch: true
     BeforeElse: true
     IndentBraces: false
-...

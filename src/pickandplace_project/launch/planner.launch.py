@@ -8,6 +8,17 @@ def generate_launch_description():
         robot_name="ur10e_rg2", package_name="robot_moveit"
     ).to_moveit_configs()
 
+    ros_tcp_endpoint = Node(
+        package="ros_tcp_endpoint",
+        executable="default_server_endpoint",
+        output="screen",
+        arguments="--wait",
+        parameters=[{
+            'tcp_ip': "0.0.0.0",
+            'tcp_port': "10000"
+        }]
+    )
+
     robot_planner_node = Node(
         package="pickandplace_project",
         executable="robot_planner",
@@ -16,4 +27,4 @@ def generate_launch_description():
         parameters=[moveit_config.to_dict()],
     )
 
-    return LaunchDescription([robot_planner_node])
+    return LaunchDescription([ros_tcp_endpoint, robot_planner_node])

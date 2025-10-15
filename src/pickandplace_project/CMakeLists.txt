@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(ros_unity_integration REQUIRED)
 
 add_executable(robot_planner src/robot_planner.cpp)
 target_include_directories(robot_planner PUBLIC
@@ -17,8 +18,9 @@ target_include_directories(robot_planner PUBLIC
 target_compile_features(robot_planner PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
   robot_planner
-  "moveit_ros_planning_interface"
-  "rclcpp"
+  moveit_ros_planning_interface
+  rclcpp
+  ros_unity_integration
 )
 
 install(

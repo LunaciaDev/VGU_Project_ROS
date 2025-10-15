@@ -13,6 +13,8 @@
   <depend>robot_state_publisher</depend>
   <depend>controller_manager</depend>
   <depend>rclcpp</depend>
+  <!-- ROS - Unity Messages integration -->
+  <depend>ros_unity_integration</depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
