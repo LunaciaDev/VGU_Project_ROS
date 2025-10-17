@@ -1,4 +1,4 @@
-ARG VARIANT="noble"
+ARG VARIANT="focal"
 FROM buildpack-deps:${VARIANT}-curl
 
 LABEL dev.containers.features="common"
