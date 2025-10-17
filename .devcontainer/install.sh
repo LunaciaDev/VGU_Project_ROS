@@ -12,7 +12,7 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 sudo apt-get update
 
 # Install ROS Noetic base and rosdep
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++
 
 # Install listed dependencies
 sudo rosdep init
