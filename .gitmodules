@@ -1,0 +1,4 @@
+[submodule "src/dependencies/ros_tcp_endpoint"]
+	path = src/dependencies/ros_tcp_endpoint
+	url = https://github.com/LunaciaDev/VGU_Project_ROS-TCP-Endpoint.git
+	branch = main-ros2

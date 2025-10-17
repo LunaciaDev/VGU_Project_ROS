@@ -10,39 +10,40 @@ default_acceleration_scaling_factor: 0.1
 joint_limits:
   gripper_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
   gripper_left_inner_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
   gripper_left_inner_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
   gripper_right_inner_finger_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
   gripper_right_inner_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
   gripper_right_outer_knuckle_joint:
     has_velocity_limits: true
-    max_velocity: 100
+    max_velocity: 100.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 5.0
     # UR10e Joint Limit
     # Taken from the default configuration in ur_description
   robot_elbow_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
@@ -57,56 +58,61 @@ joint_limits:
     #
     # Refer to https://github.com/ros-industrial/universal_robot/issues/265 for
     # more information.
-    max_position: !degrees  180.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -180.0
+    max_position: 3.141592653589793
+    max_velocity: 3.141592653589793
+    min_position: -3.141592653589793
   robot_shoulder_lift_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 330.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  120.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 2.094395102393195
+    min_position: -6.283185307179586
   robot_shoulder_pan_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 330.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  120.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 2.0943951023931953
+    min_position: -6.283185307179586
   robot_wrist_1_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586
   robot_wrist_2_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586
   robot_wrist_3_joint:
     # acceleration limits are not publicly available
-    has_acceleration_limits: false
+    has_acceleration_limits: true
+    max_acceleration: 2.0
     has_effort_limits: true
     has_position_limits: true
     has_velocity_limits: true
     max_effort: 54.0
-    max_position: !degrees  360.0
-    max_velocity: !degrees  180.0
-    min_position: !degrees -360.0
+    max_position: 6.283185307179586
+    max_velocity: 3.141592653589793
+    min_position: -6.283185307179586

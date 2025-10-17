@@ -11,7 +11,7 @@ curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-a
 sudo dpkg -i /tmp/ros2-apt-source.deb
 
 # Install ros-base and rosdep for dependencies management
-sudo apt-get update && sudo apt-get install -y python3-rosdep ros-jazzy-ros-base
+sudo apt-get update && sudo apt-get install -y python3-rosdep ros-jazzy-ros-base python3-colcon-common-extensions g++
 # Setup environment
 source /opt/ros/jazzy/setup.bash
 # Instantiate rosdep and install all dependencies found
