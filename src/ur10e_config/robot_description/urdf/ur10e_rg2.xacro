@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur10e_rg2">
+   <!-- import macros -->
+   <xacro:include filename="$(find ur_description)/urdf/inc/ur10e_macro.xacro"/>
+   <xacro:include filename="$(find onrobot_rg_description)/urdf/onrobot_rg2_model_macro.xacro"/>
+
+   <!-- declare the robot parts -->
+   <xacro:ur10e_robot
+      prefix="arm_"
+      safety_limits="true"
+   />
+   <xacro:onrobot_rg2
+      prefix="gripper_"
+   />
+
+   <!-- attach the parts -->
+   <joint name="ur10e_rg2_connector" type="fixed">
+      <parent link="arm_tool0"/>
+      <child link="gripper_onrobot_rg2_base_link"/>
+      <!-- No origin, using the default all-zero -->
+   </joint>
+
+   <!-- The world joint will be declared within the moveit package. -->
+</robot>

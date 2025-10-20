@@ -12,7 +12,9 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 sudo apt-get update
 
 # Install ROS Noetic base and rosdep
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++
+# [TODO]: Extract the calibration data
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ 
+sudo apt-get install -y ros-noetic-ur-robot-driver ros-noetic-ur-calibration
 
 # Install listed dependencies
 sudo rosdep init
@@ -27,5 +29,5 @@ touch ~/.Xauthority
 # Automatic sourcing of ROS files for new terminal session
 # Will print an error if the workspace was not built
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-echo "source /workspaces/VGU_Project_ROS/install/setup.bash" >> ~/.bashrc
+echo "source /workspaces/VGU_Project_ROS/devel/setup.bash" >> ~/.bashrc
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
