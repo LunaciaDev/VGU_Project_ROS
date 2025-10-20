@@ -18,7 +18,7 @@ sudo apt-get install -y ros-noetic-ur-robot-driver ros-noetic-ur-calibration
 
 # Install listed dependencies
 sudo rosdep init
-rosdep update
+rosdep update --rosdistro=noetic
 rosdep install --from-paths src -y --ignore-src
 
 # Optional: Allow X Forwarding for GUI applications
