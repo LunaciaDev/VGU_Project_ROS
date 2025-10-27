@@ -7,6 +7,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED
     roscpp
     ros_unity_integration
+    moveit_ros_planning_interface
 )
 
 # System dependencies are found with CMake's conventions
@@ -32,7 +33,7 @@ catkin_package(
 ## Build ##
 ###########
 
-include_directories(${catkin_INCLUDE_DIRS} )
+include_directories(${catkin_INCLUDE_DIRS})
 
 add_executable(robot_planner src/robot_planner.cpp)
 target_link_libraries(robot_planner
