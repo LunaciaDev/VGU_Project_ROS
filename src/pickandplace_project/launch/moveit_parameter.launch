@@ -19,7 +19,7 @@
         <!-- Planning Pipelines -->
         <group ns="move_group/planning_pipelines">
             <include file="$(find robot_moveit)/launch/planning_pipeline.launch.xml">
-                <arg name="pipeline" value="chomp" />
+                <arg name="pipeline" value="ompl" />
             </include>
         </group>
 
@@ -28,11 +28,11 @@
             <arg name="moveit_controller_manager" value="fake"/>
         </include>
 
-        <!-- Start the actual move_group action server-->
+        <!-- Start the move_group action server-->
         <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">
             <param name="allow_trajectory_execution" value="true"/>
             <param name="sense_for_plan/max_safe_path_cost" value="1"/>
-            <param name="default_planning_pipeline" value="chomp" />
+            <param name="default_planning_pipeline" value="ompl" />
 
             <!-- do not copy dynamics information from /joint_states to internal robot monitoring
                 default to false, because almost nothing in move_group relies on this information -->

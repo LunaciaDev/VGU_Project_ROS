@@ -27,7 +27,7 @@
    <joint name="arm_tcp_joint" type="fixed">
       <parent link="arm_tool0"/>
       <child link="arm_tcp_link"/>
-      <origin xyz="0 -21.5 0" rpy="0 0 0"/>
+      <origin xyz="0 0 0.215" rpy="0 0 0"/>
    </joint>
 
    <!-- The world joint will be declared within the moveit package. -->
