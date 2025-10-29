@@ -1,8 +1,9 @@
 <launch>
-    <include file="$(find robot_moveit)/launch/move_group.launch" />
-    <node name="server-endpoint" pkg="ros_tcp_endpoint" type="default_server_endpoint.py" args="--wait" output="screen">
+    <!-- Create the server endpoint for Unity -->
+    <node name="server_endpoint" pkg="ros_tcp_endpoint" type="default_server_endpoint.py" args="--wait" output="screen">
         <param name="tcp_ip" type="string" value="0.0.0.0"/>
         <param name="tcp_port" type="int" value="10000"/>
     </node>
+    <!-- Launch the service -->
     <node name="robot_planner" pkg="pickandplace_project" type="robot_planner" output="screen"/>
 </launch>

@@ -11,10 +11,8 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 # Update the repository information
 sudo apt-get update
 
-# Install ROS Noetic base and rosdep
-# [TODO]: Extract the calibration data
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ 
-sudo apt-get install -y ros-noetic-ur-robot-driver ros-noetic-ur-calibration
+# Install Base ROS Noetic and rosdep, as well as python is python3 system alias
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
 
 # Install listed dependencies
 sudo rosdep init

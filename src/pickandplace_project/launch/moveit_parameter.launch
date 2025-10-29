@@ -1,0 +1,47 @@
+<launch>
+    <!-- Load MoveIt configuration (URDF, SRDF and other .yaml configuration files) to the param server -->
+    <include file="$(find robot_moveit)/launch/planning_context.launch">
+      <arg name="load_robot_description" value="true"/>
+    </include>
+
+    <!-- Static TF Publisher -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 0 0 0 world arm_base_link"/>
+
+    <!-- Joint State Publisher -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+        <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
+    </node>
+
+    <!-- Robot State Publisher -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+    <!-- Launch the Move Group -->
+        <!-- Planning Pipelines -->
+        <group ns="move_group/planning_pipelines">
+            <include file="$(find robot_moveit)/launch/planning_pipeline.launch.xml">
+                <arg name="pipeline" value="chomp" />
+            </include>
+        </group>
+
+        <!-- Fake Trajectory Executor -->
+        <include ns="move_group" file="$(find robot_moveit)/launch/trajectory_execution.launch.xml">
+            <arg name="moveit_controller_manager" value="fake"/>
+        </include>
+
+        <!-- Start the actual move_group action server-->
+        <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">
+            <param name="allow_trajectory_execution" value="true"/>
+            <param name="sense_for_plan/max_safe_path_cost" value="1"/>
+            <param name="default_planning_pipeline" value="chomp" />
+
+            <!-- do not copy dynamics information from /joint_states to internal robot monitoring
+                default to false, because almost nothing in move_group relies on this information -->
+            <param name="monitor_dynamics" value="false" />
+
+            <!-- Publish the planning scene of the physical robot so that rviz plugin can know actual robot -->
+            <param name="planning_scene_monitor/publish_planning_scene" value="true" />
+            <param name="planning_scene_monitor/publish_geometry_updates" value="true" />
+            <param name="planning_scene_monitor/publish_state_updates" value="true" />
+            <param name="planning_scene_monitor/publish_transforms_updates" value="true" />
+        </node>
+</launch>

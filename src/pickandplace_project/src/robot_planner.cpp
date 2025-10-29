@@ -20,7 +20,9 @@ std::pair<bool, MoveGroupInterface::Plan> plan_trajectory(
     move_group->setStartState(start_state);
 
     // assign the target pose
-    move_group->setPoseTarget(target_pose);
+    move_group->setPoseTarget(target_pose, "arm_tcp_link");
+
+    ROS_INFO("End effector %s", move_group -> getEndEffector().c_str());
 
     // plan
     const auto ok = static_cast<bool>(move_group->plan(plan));
@@ -29,13 +31,15 @@ std::pair<bool, MoveGroupInterface::Plan> plan_trajectory(
 }
 
 bool service_function(
-    const IntegrationService::Request&  request,
+    // ROS doesnt like these being const for some reason
+    // Maybe they are template that get some stuff injected in comptime that
+    // make those not const-able?
+    IntegrationService::Request&  request,
     IntegrationService::Response& response
 ) {
     static const std::string PLANNING_GROUP = "robot_arm";
 
     MoveGroupInterface       move_group(PLANNING_GROUP);
-    ROS_INFO("End effector %s", move_group.getEndEffector().c_str());
 
     const auto current_joint_configuration = request.joints_input.joints;
     MoveGroupInterface::Plan pre_grasp_pose, grasp_pose, pick_up_pose,
@@ -130,7 +134,7 @@ int main(int argc, char** argv) {
     ros::NodeHandle          node_handle;
 
     const ros::ServiceServer service =
-        node_handle.advertiseService("IntegrationService", service_function);
+        node_handle.advertiseService("robot_planner_service", service_function);
     ROS_INFO("Service Ready");
     ros::spin();
 
