@@ -35,6 +35,7 @@ bool service_function(
     static const std::string PLANNING_GROUP = "robot_arm";
 
     MoveGroupInterface       move_group(PLANNING_GROUP);
+    ROS_INFO("End effector %s", move_group.getEndEffector().c_str());
 
     auto current_joint_configuration = request.joints_input.joints;
     MoveGroupInterface::Plan pre_grasp_pose, grasp_pose, pick_up_pose,

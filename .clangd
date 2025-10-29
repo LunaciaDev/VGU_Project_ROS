@@ -1,4 +1,0 @@
-CompileFlags:
-  Add: [
-    "-I/workspaces/VGU_Project_ROS/install/ros_unity_integration/include/ros_unity_integration"
-  ]

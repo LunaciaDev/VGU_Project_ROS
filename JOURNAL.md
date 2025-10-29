@@ -39,3 +39,7 @@ What we can do instead is sample N random vector within c-space, then removing a
 Then, from the remaining vector, we can connect them all together via linear interpolation, removing any edges that intersect an invalid configuration.
 What we are left with, is a graph, and the problem become shortest path traversal on graph, which can be solved with known algorithm like A*, Dijikstra, etc.
 Said path then can be post-processed to smooth out corners, allowing the robot to move faster along them.
+
+### 29 Oct 2025
+
+We could create a virtual link that is at the location where we want the gripper to be, which should make it easier to position since we do not need to worry too much about offsets. Probably.
