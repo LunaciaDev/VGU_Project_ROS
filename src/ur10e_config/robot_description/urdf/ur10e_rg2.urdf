@@ -685,5 +685,13 @@
     <child link="gripper_onrobot_rg2_base_link"/>
     <!-- No origin, using the default all-zero -->
   </joint>
+  <!-- Define a virtual link as the tip link for navigation -->
+  <!-- This is roughly about 21.5cm off from tool0 -->
+  <link name="arm_tcp_link"/>
+  <joint name="arm_tcp_joint" type="fixed">
+    <parent link="arm_tool0"/>
+    <child link="arm_tcp_link"/>
+    <origin rpy="0 0 0" xyz="0 -21.5 0"/>
+  </joint>
   <!-- The world joint will be declared within the moveit package. -->
 </robot>
