@@ -10,7 +10,7 @@ using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 std::pair<bool, MoveGroupInterface::Plan> plan_trajectory(
     MoveGroupInterface*                              move_group,
     const geometry_msgs::Pose_<std::allocator<void>> target_pose,
-    double*                                          current_joint_configuration
+    const double*                                    current_joint_configuration
 ) {
     auto plan = MoveGroupInterface::Plan();
 
@@ -29,7 +29,7 @@ std::pair<bool, MoveGroupInterface::Plan> plan_trajectory(
 }
 
 bool service_function(
-    IntegrationService::Request&  request,
+    const IntegrationService::Request&  request,
     IntegrationService::Response& response
 ) {
     static const std::string PLANNING_GROUP = "robot_arm";
@@ -37,7 +37,7 @@ bool service_function(
     MoveGroupInterface       move_group(PLANNING_GROUP);
     ROS_INFO("End effector %s", move_group.getEndEffector().c_str());
 
-    auto current_joint_configuration = request.joints_input.joints;
+    const auto current_joint_configuration = request.joints_input.joints;
     MoveGroupInterface::Plan pre_grasp_pose, grasp_pose, pick_up_pose,
         place_pose;
 
@@ -96,7 +96,8 @@ bool service_function(
     }
 
     current_joint_angles =
-        pick_up_pose.trajectory_.joint_trajectory.points.back().positions.data();
+        pick_up_pose.trajectory_.joint_trajectory.points.back()
+            .positions.data();
 
     // Place
     {
