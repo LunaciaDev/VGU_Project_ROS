@@ -7,8 +7,9 @@ Recording of how we worked on this project.
 - [x] Write the description for the ur10e mounted with rg2
 - [x] Create the moveit package
 - [x] Migrate the message and service definition
-- [ ] Migrate the planner
-    - [ ] The service does not receive return value from Moveit?
+- [x] Migrate the planner
+    - [x] The service does not receive return value from Moveit?
+- [ ] Picking up the object
 
 ## Journal
 
@@ -46,3 +47,11 @@ Said path then can be post-processed to smooth out corners, allowing the robot t
 We could create a virtual link that is at the location where we want the gripper to be, which should make it easier to position since we do not need to worry too much about offsets. Probably.
 
 It seems to work at least on RViz. Has to fix a funny bug where the targeting point is 21 meters(!) away from the robot, but all is good now. Just need to figure out why we are not getting the return from MoveIt! - the planning works, but the code seems to not respond.
+
+### 30 Oct 2025
+
+Apparently, you need another spinner thread to receive Moveit plan callback? I have absolutely no idea, documentation as far as I can find did not mention this at all, and in ROS2 you only need 1 spinner thread(?) at least as far as I can tell?
+
+Well, the service, sort of worked. Now is making it pick up the object.
+
+It seems like the issue is on Unity side first thing - it does not actuate the hand properly, this will take a while to fix.
