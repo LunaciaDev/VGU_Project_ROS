@@ -1,137 +1,186 @@
-#include <memory>
+#include "moveit/move_group_interface/move_group_interface.h"
+#include "ros/init.h"
+#include "ros/node_handle.h"
+#include "ros/service_server.h"
+#include "ros_unity_integration/IntegrationService.h"
 
-#include <moveit/robot_state/robot_state.hpp>
-#include <rclcpp/executors.hpp>
-#include <rclcpp/logger.hpp>
-#include <rclcpp/logging.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp/service.hpp>
-#include <rclcpp/utilities.hpp>
-#include <moveit/move_group_interface/move_group_interface.hpp>
-#include <utility>
-#include "geometry_msgs/msg/pose.hpp"
-#include "ros_unity_integration/srv/integration_service.hpp"
+using IntegrationService = ros_unity_integration::IntegrationService;
+using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
-auto plan_trajectory(moveit::planning_interface::MoveGroupInterface* move_group,
-                     ros_unity_integration::srv::IntegrationService_Request::_pick_pose_type target_pose,
-                     // Man do I miss Python's duck typing
-                     double* current_joint_configuration)
-{
-    auto plan = moveit::planning_interface::MoveGroupInterface::Plan();
+std::pair<bool, MoveGroupInterface::Plan> plan_trajectory(
+    MoveGroupInterface*                              move_group,
+    const geometry_msgs::Pose_<std::allocator<void>> target_pose,
+    const double*                                    current_joint_configuration
+) {
+    auto plan = MoveGroupInterface::Plan();
 
-    // Construct the starting state from the message
+    ROS_INFO("Constructing starting state of the robot");
+
+    // construct the starting state from the message
     auto start_state = moveit::core::RobotState(move_group->getRobotModel());
     start_state.setVariablePositions(current_joint_configuration);
     move_group->setStartState(start_state);
 
-    // Assign the target pose
-    move_group->setPoseTarget(target_pose);
+    ROS_INFO("Constructing target position of the robot");
 
-    // Plan!
-    const auto ok = static_cast<bool>(move_group->plan(plan));
+    // assign the target pose
+    move_group->setPoseTarget(target_pose, "arm_tcp_link");
+
+    ROS_INFO("Passing to planner...");
+
+    // plan
+    const auto ok =
+        (move_group->plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+    ROS_INFO("Planner finished");
 
     return std::make_pair(ok, plan);
 }
 
-auto callback(const std::shared_ptr<rclcpp::Node> node,
-              const std::shared_ptr<ros_unity_integration::srv::IntegrationService_Request> request,
-              const std::shared_ptr<ros_unity_integration::srv::IntegrationService_Response> response)
-{
-    using namespace moveit::planning_interface;
+bool service_function(
+    // ROS doesnt like these being const for some reason
+    // Maybe they are template that get some stuff injected in comptime that
+    // make those not const-able?
+    IntegrationService::Request&  request,
+    IntegrationService::Response& response
+) {
+    static const std::string PLANNING_GROUP = "robot_arm";
 
-    auto move_group = MoveGroupInterface(node, "robot_arm");
-    auto current_joint_configuration = request->joints_input.joints;
-    MoveGroupInterface::Plan pre_grasp_pose, grasp_pose, pick_up_pose, place_pose;
+    ROS_INFO("Received request from Unity.");
+
+    MoveGroupInterface move_group(PLANNING_GROUP);
+
+    const auto current_joint_configuration = request.joints_input.joints;
+    MoveGroupInterface::Plan pre_grasp_pose, grasp_pose, pick_up_pose,
+        place_pose;
 
     // Pre-Grasp
     {
-        const auto [success, plan] = plan_trajectory(&move_group, request->pick_pose, &current_joint_configuration[0]);
+        ROS_INFO("Planning trajectory for pre_grasp");
 
-        if (!success)
-        {
-            return response;
+        const auto result = plan_trajectory(
+            &move_group, request.pick_pose, &current_joint_configuration[0]
+        );
+        const auto success = result.first;
+        const auto plan = result.second;
+
+        if (!success) {
+            ROS_ERROR("Failed to calculate plan for pre_grasp");
+            /*
+                Great ROS1 design by the way.
+                We have to return *something* back to the caller, otherwise they
+               are left hanging. Guess what returning false does? It send
+               nothing back to the caller!
+            */
+            return true;
         }
 
         pre_grasp_pose = plan;
     }
 
-    auto current_joint_angles = pre_grasp_pose.trajectory.joint_trajectory.points.back().positions.data();
-    auto lowered_pick_pose = geometry_msgs::msg::Pose(request->pick_pose);
-    lowered_pick_pose.position.set__z(lowered_pick_pose.position.z - 0.05);
+    auto current_joint_angles =
+        pre_grasp_pose.trajectory_.joint_trajectory.points.back()
+            .positions.data();
+    auto lowered_pick_pose = geometry_msgs::Pose(request.pick_pose);
+    lowered_pick_pose.position.z = lowered_pick_pose.position.z - 0.05;
 
     // Grasp
     {
-        const auto [success, plan] = plan_trajectory(&move_group, lowered_pick_pose, current_joint_angles);
+        ROS_INFO("Planning trajectory for grasp");
 
-        if (!success)
-        {
-            return response;
+        const auto result = plan_trajectory(
+            &move_group, lowered_pick_pose, current_joint_angles
+        );
+        const auto success = result.first;
+        const auto plan = result.second;
+
+        ROS_INFO("Planner finished");
+
+        if (!success) {
+            ROS_ERROR("Failed to calculate plan for grasp");
+            return true;
         }
 
         grasp_pose = plan;
     }
 
-    current_joint_angles = grasp_pose.trajectory.joint_trajectory.points.back().positions.data();
+    current_joint_angles =
+        grasp_pose.trajectory_.joint_trajectory.points.back().positions.data();
 
     // Pick-up
     {
-        const auto [success, plan] = plan_trajectory(&move_group, request->pick_pose, current_joint_angles);
+        ROS_INFO("Planning trajectory for pick_up");
 
-        if (!success)
-        {
-            return response;
+        const auto result = plan_trajectory(
+            &move_group, request.pick_pose, current_joint_angles
+        );
+        const auto success = result.first;
+        const auto plan = result.second;
+
+        ROS_INFO("Planner finished");
+
+        if (!success) {
+            ROS_ERROR("Failed to calculate plan for pick_up");
+            return true;
         }
 
         pick_up_pose = plan;
     }
 
-    current_joint_angles = pick_up_pose.trajectory.joint_trajectory.points.back().positions.data();
+    current_joint_angles =
+        pick_up_pose.trajectory_.joint_trajectory.points.back()
+            .positions.data();
 
     // Place
     {
-        const auto [success, plan] = plan_trajectory(&move_group, request->place_pose, current_joint_angles);
+        ROS_INFO("Planning trajectory for place");
 
-        if (!success)
-        {
-            return response;
+        const auto result = plan_trajectory(
+            &move_group, request.place_pose, current_joint_angles
+        );
+        const auto success = result.first;
+        const auto plan = result.second;
+
+        ROS_INFO("Planner finished");
+
+        if (!success) {
+            ROS_ERROR("Failed to calculate plan for place");
+            return true;
         }
 
         place_pose = plan;
     }
 
     // If we reach this part, all planning section has succeeded.
-    response->trajectories.push_back(pre_grasp_pose.trajectory);
-    response->trajectories.push_back(grasp_pose.trajectory);
-    response->trajectories.push_back(pick_up_pose.trajectory);
-    response->trajectories.push_back(place_pose.trajectory);
+    ROS_INFO(
+        "All trajectories successfully planned. Constructing the return "
+        "message."
+    );
+
+    response.trajectories.push_back(pre_grasp_pose.trajectory_);
+    response.trajectories.push_back(grasp_pose.trajectory_);
+    response.trajectories.push_back(pick_up_pose.trajectory_);
+    response.trajectories.push_back(place_pose.trajectory_);
 
     move_group.clearPoseTargets();
 
-    return response;
+    ROS_INFO("Sending plans back for Unity to execute");
+
+    return true;
 }
 
-int main(int argc, char* argv[])
-{
-    // Initialize ROS and Node
-    rclcpp::init(argc, argv);
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "robot_planner");
+    ros::NodeHandle   node_handle;
 
-    // Create a ROS logger
-    const auto logger = rclcpp::get_logger("robot_planner");
-    const auto node = std::make_shared<rclcpp::Node>("robot_planner");
+    // why..?
+    ros::AsyncSpinner spinner = ros::AsyncSpinner(2);
 
-    // Create a ROS Service
-    rclcpp::Service<ros_unity_integration::srv::IntegrationService>::SharedPtr service =
-        node->create_service<ros_unity_integration::srv::IntegrationService>(
-            "robot_planner_service",
-            [node](const std::shared_ptr<ros_unity_integration::srv::IntegrationService_Request> request,
-                   const std::shared_ptr<ros_unity_integration::srv::IntegrationService_Response> response) {
-                return callback(node, request, response);
-            });
+    spinner.start();
+    const ros::ServiceServer service =
+        node_handle.advertiseService("robot_planner_service", service_function);
+    ROS_INFO("robot_planner_service ready");
+    ros::waitForShutdown();
 
-    // Log that the service is created
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Robot Planner Service started.");
-
-    rclcpp::spin(node);
-    rclcpp::shutdown();
     return 0;
 }

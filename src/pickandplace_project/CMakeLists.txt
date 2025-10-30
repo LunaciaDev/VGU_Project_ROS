@@ -1,48 +1,48 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.0.2)
 project(pickandplace_project)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
 
-# find dependencies
-find_package(ament_cmake REQUIRED)
-find_package(moveit_ros_planning_interface REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(ros_unity_integration REQUIRED)
+find_package(catkin REQUIRED
+    roscpp
+    ros_unity_integration
+    moveit_ros_planning_interface
+)
+
+# System dependencies are found with CMake's conventions
+find_package(Boost REQUIRED COMPONENTS system)
+
+###################################
+## catkin specific configuration ##
+###################################
+## The catkin_package macro generates cmake config files for your package
+## Declare things to be passed to dependent projects
+## INCLUDE_DIRS: uncomment this if your package contains header files
+## LIBRARIES: libraries you create in this project that dependent projects also need
+## CATKIN_DEPENDS: catkin_packages dependent projects also need
+## DEPENDS: system dependencies of this project that dependent projects also need
+catkin_package(
+#  INCLUDE_DIRS include
+#  LIBRARIES pickandplace_project
+#  CATKIN_DEPENDS other_catkin_pkg
+#  DEPENDS system_lib
+)
+
+###########
+## Build ##
+###########
+
+include_directories(${catkin_INCLUDE_DIRS})
 
 add_executable(robot_planner src/robot_planner.cpp)
-target_include_directories(robot_planner PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
-target_compile_features(robot_planner PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(
-  robot_planner
-  moveit_ros_planning_interface
-  rclcpp
-  ros_unity_integration
+target_link_libraries(robot_planner
+   ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
 
-install(
-  TARGETS robot_planner
-  DESTINATION lib/${PROJECT_NAME}
-)
+#############
+## Install ##
+#############
 
-install(
-  DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_package()
+install(TARGETS robot_planner DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
