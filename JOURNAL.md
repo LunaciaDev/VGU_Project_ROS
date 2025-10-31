@@ -55,3 +55,9 @@ Apparently, you need another spinner thread to receive Moveit plan callback? I h
 Well, the service, sort of worked. Now is making it pick up the object.
 
 It seems like the issue is on Unity side first thing - it does not actuate the hand properly, this will take a while to fix.
+
+### 31 Oct 2025
+
+The gripper is fixed. Turns out Unity cannot handle the way the RG2 is constructed, so removing the inner link's collision box fix the issue. It does not move exactly the same as in reality, however.
+
+Switching into pub/sub model would allow us to attach Unity into a working robot pipeline without too much disruption. Another day, another rewrite.

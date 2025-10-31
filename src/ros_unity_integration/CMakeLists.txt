@@ -49,15 +49,15 @@ find_package(catkin REQUIRED COMPONENTS
 # Generate messages in the 'msg' folder
 add_message_files(
     FILES
-    Ur10eJoints.msg
-    Ur10eTrajectories.msg
+    UnityRequest.msg
+    TrajectoryMessage.msg
 )
 
 # Generate services in the 'srv' folder
-add_service_files(
-    FILES
-    IntegrationService.srv
-)
+#add_service_files(
+#    FILES
+#    new.srv
+#)
 
 ## Generate actions in the 'action' folder
 # add_action_files(

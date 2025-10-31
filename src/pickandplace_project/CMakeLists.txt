@@ -35,8 +35,8 @@ catkin_package(
 
 include_directories(${catkin_INCLUDE_DIRS})
 
-add_executable(robot_planner src/robot_planner.cpp)
-target_link_libraries(robot_planner
+add_executable(unity_bridge src/main.cpp src/unity_targets_listener.cpp)
+target_link_libraries(unity_bridge
    ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
 
@@ -44,5 +44,5 @@ target_link_libraries(robot_planner
 ## Install ##
 #############
 
-install(TARGETS robot_planner DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+install(TARGETS unity_bridge DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
