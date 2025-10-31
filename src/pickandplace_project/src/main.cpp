@@ -1,15 +1,12 @@
+#include "ros/console.h"
 #include "ros/init.h"
 #include "ros/node_handle.h"
 #include "ros/spinner.h"
 #include "ros/subscriber.h"
-
-#include "macros.hpp"
 #include "unity_targets_listener.hpp"
 
-static const char* LOG_NAME = "unity_bridge";
-
 int main(int argc, char** argv) {
-    INFO("Starting unity_bridge node");
+    ROS_INFO("Starting unity_bridge node");
     ros::init(argc, argv, "unity_bridge");
     ros::NodeHandle node_handle;
 
@@ -20,9 +17,10 @@ int main(int argc, char** argv) {
     spinner.start();
 
     // Unity Targets subscriber
-    INFO("Registering unity_targets subscriber");
-    const ros::Subscriber subscriber =
-        node_handle.subscribe("unity_targets", 1000, unity_targets_subs_handler);
+    ROS_INFO("Registering unity_targets subscriber");
+    const ros::Subscriber subscriber = node_handle.subscribe(
+        "unity_targets", 1000, unity_targets_subs_handler
+    );
 
     // Unity Objects subscriber
     // [TODO]
@@ -33,7 +31,7 @@ int main(int argc, char** argv) {
     // Plan Publisher to Unity
     // [TODO]
 
-    INFO("unity_bridge node ready for action.");
+    ROS_INFO("unity_bridge node ready for action.");
 
     ros::waitForShutdown();
     return 0;

@@ -29,3 +29,4 @@ touch ~/.Xauthority
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
 echo "source /workspaces/VGU_Project_ROS/devel/setup.bash" >> ~/.bashrc
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
+echo export ROSCONSOLE_FORMAT=\''[${severity}] [${walltime:%Y-%m-%d %H:%M:%S}] [${node}]: ${message}'\' >> ~/.bashrc
