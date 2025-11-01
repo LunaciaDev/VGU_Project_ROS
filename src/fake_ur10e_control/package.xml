@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>ros_unity_bridge</name>
+  <name>fake_ur10e_control</name>
   <version>1.0.0</version>
-  <description>The ros_unity_bridge package</description>
+  <description>The fake_ur10e_control package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -13,13 +13,13 @@
   <!-- One license tag required, multiple allowed, one license per tag -->
   <!-- Commonly used license strings: -->
   <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>MIT</license>
+  <license>BSD</license>
 
 
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/ros_unity_bridge</url> -->
+  <!-- <url type="website">http://wiki.ros.org/fake_ur10e_control</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->
@@ -48,10 +48,7 @@
   <!--   <test_depend>gtest</test_depend> -->
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
-  <depend>ros_unity_messages</depend>
-  <depend>moveit_ros_planning_interface</depend>
-  <exec_depend>fake_ur10e_control</exec_depend>
-  <exec_depend>ros_tcp_endpoint</exec_depend>
+  <depend>ros_control_boilerplate</depend>
   <buildtool_depend>catkin</buildtool_depend>
 
 

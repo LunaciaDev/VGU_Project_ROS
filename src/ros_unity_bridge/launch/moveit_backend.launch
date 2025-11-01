@@ -23,11 +23,17 @@
             </include>
         </group>
 
-        <!-- Fake Trajectory Executor -->
+        <!-- Trajectory Executor -->
         <include ns="move_group" file="$(find robot_moveit)/launch/trajectory_execution.launch.xml">
-            <arg name="moveit_controller_manager" value="fake"/>
+            <arg name="moveit_controller_manager" value="simple"/>
         </include>
 
+        <!-- Start fake hardware interface -->
+        <node name="ur10e_hardware_interface" pkg="fake_ur10e_control" type="fake_ur10e_control" output="screen" />
+
+        <!-- Load controller managers -->
+        <include file="$(find robot_moveit)/launch/ros_controllers.launch" />
+        
         <!-- Start the move_group action server-->
         <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">
             <param name="allow_trajectory_execution" value="true"/>

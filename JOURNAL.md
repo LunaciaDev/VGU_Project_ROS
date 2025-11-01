@@ -69,3 +69,7 @@ As one may notice, the pub-sub migration stopped dead at simple hardware impleme
 Using Moveit fake controller, everything happen inside Moveit as far as I can tell. Potentials topics yielded not much usable for controlling the robot simulation. So, a fake hardware interface is needed, as we switch to ROS' simple controllers. This way, we can hook up into the communication between Moveit and the hardware interface to control the Unity simulator. If we was allowed to use the actual robot, not much change is needed. Also, that allow us to switch to commands, so the system is free to react and course-correct, which proved difficult if implemented using service.
 
 Now is just writing the hardware node, ugh.
+
+Adapted the fake hardware template from https://github.com/PickNikRobotics/ros_control_boilerplate.
+It seems to work fine with the arm, but not the gripper. Maybe the interface was not implemented?
+Anyhow, got another painful debug session with the moveit configuration, where the "joints" config is actually "joint". -1h of my life, oof.
