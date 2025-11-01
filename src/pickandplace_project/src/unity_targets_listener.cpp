@@ -3,10 +3,9 @@
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/utils/moveit_error_code.h"
 #include "ros/console.h"
-#include "ros_unity_integration/UnityRequest.h"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
-using UnityRequest = ros_unity_integration::UnityRequest;
+using UnityRequest = ros_unity_messages::UnityRequest;
 
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     static const std::string PLANNING_GROUP = "robot_arm";

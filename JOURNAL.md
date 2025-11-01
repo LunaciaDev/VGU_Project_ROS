@@ -61,3 +61,11 @@ It seems like the issue is on Unity side first thing - it does not actuate the h
 The gripper is fixed. Turns out Unity cannot handle the way the RG2 is constructed, so removing the inner link's collision box fix the issue. It does not move exactly the same as in reality, however.
 
 Switching into pub/sub model would allow us to attach Unity into a working robot pipeline without too much disruption. Another day, another rewrite.
+
+### 01 Nov 2025
+
+As one may notice, the pub-sub migration stopped dead at simple hardware implementation.
+
+Using Moveit fake controller, everything happen inside Moveit as far as I can tell. Potentials topics yielded not much usable for controlling the robot simulation. So, a fake hardware interface is needed, as we switch to ROS' simple controllers. This way, we can hook up into the communication between Moveit and the hardware interface to control the Unity simulator. If we was allowed to use the actual robot, not much change is needed. Also, that allow us to switch to commands, so the system is free to react and course-correct, which proved difficult if implemented using service.
+
+Now is just writing the hardware node, ugh.

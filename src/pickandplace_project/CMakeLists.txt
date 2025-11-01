@@ -4,9 +4,9 @@ project(pickandplace_project)
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
-find_package(catkin REQUIRED
+find_package(catkin REQUIRED COMPONENTS
     roscpp
-    ros_unity_integration
+    ros_unity_messages
     moveit_ros_planning_interface
 )
 
@@ -25,7 +25,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pickandplace_project
-#  CATKIN_DEPENDS other_catkin_pkg
+   CATKIN_DEPENDS ros_unity_messages
 #  DEPENDS system_lib
 )
 
@@ -34,8 +34,10 @@ catkin_package(
 ###########
 
 include_directories(${catkin_INCLUDE_DIRS})
-
 add_executable(unity_bridge src/main.cpp src/unity_targets_listener.cpp)
+add_dependencies(unity_bridge
+  ${catkin_EXPORTED_TARGETS}
+)
 target_link_libraries(unity_bridge
    ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
