@@ -58,7 +58,38 @@ It seems like the issue is on Unity side first thing - it does not actuate the h
 
 ### 31 Oct 2025
 
-The gripper is fixed. Turns out Unity cannot handle the way the RG2 is constructed, so removing the inner link's collision box fix the issue. It does not move exactly the same as in reality, however.
+The gripper is fixed. Turns out Unity cannot handle the way the RG2 is constructed, so removing the inner link's collision box fix the issue. ~~It does not move exactly the same as in reality, however.~~
+(Edit 01 Nov 2025): It actually is working as defined, because the urdf for the gripper is defined as follows:
+```xml
+<joint name="gripper_finger_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 -0.017178 0.125797"/>
+    <parent link="gripper_onrobot_rg2_base_link"/>
+    <child link="gripper_left_outer_knuckle"/>
+    <axis xyz="-1 0 0"/>
+    <limit effort="1000" lower="-0.558505" upper="0.785398" velocity="100.0"/>
+  </joint>
+  <joint name="gripper_left_inner_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_left_inner_finger_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_outer_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_inner_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_inner_finger_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="1" offset="0"/>
+  </joint>
+```
+So manually controlling the joints via mimicking input would be the same as if the gripper is controlled via driver.
 
 Switching into pub/sub model would allow us to attach Unity into a working robot pipeline without too much disruption. Another day, another rewrite.
 
