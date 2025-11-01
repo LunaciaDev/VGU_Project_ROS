@@ -103,4 +103,5 @@ Now is just writing the hardware node, ugh.
 
 Adapted the fake hardware template from https://github.com/PickNikRobotics/ros_control_boilerplate.
 It seems to work fine with the arm, but not the gripper. Maybe the interface was not implemented?
+
 Anyhow, got another painful debug session with the moveit configuration, where the "joints" config is actually "joint". -1h of my life, oof.
