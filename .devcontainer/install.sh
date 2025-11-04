@@ -14,10 +14,13 @@ sudo apt-get update
 # Install Base ROS Noetic and rosdep, as well as python is python3 system alias
 sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
 
+# Source ROS Environments
+source /opt/ros/noetic/setup.bash
+
 # Install listed dependencies
 sudo rosdep init
 rosdep update --rosdistro=noetic
-rosdep install --from-paths src -y --ignore-src
+rosdep install --from-paths src -y --ignore-src --rosdistro=noetic
 
 # Optional: Allow X Forwarding for GUI applications
 sudo apt-get install -y openssh-server
@@ -30,4 +33,4 @@ echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
 echo "source /workspaces/VGU_Project_ROS/devel/setup.bash" >> ~/.bashrc
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
 echo export ROSCONSOLE_FORMAT=\''[${severity}] [${walltime:%Y-%m-%d %H:%M:%S}] [${node}]: ${message}'\' >> ~/.bashrc
-echo "export DISABLE_ROS1_EOL_WARNINGS = 1" >> ~/.bashrc
+echo "export DISABLE_ROS1_EOL_WARNINGS=1" >> ~/.bashrc
