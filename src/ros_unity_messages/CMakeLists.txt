@@ -10,7 +10,6 @@ project(ros_unity_messages)
 find_package(catkin REQUIRED COMPONENTS
     roscpp
     message_generation
-    moveit_msgs
     geometry_msgs
 )
 
@@ -50,7 +49,6 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
     FILES
     UnityRequest.msg
-    TrajectoryMessage.msg
 )
 
 # Generate services in the 'srv' folder
@@ -69,7 +67,6 @@ add_message_files(
 # Generate added messages and services with any dependencies listed here
 generate_messages(
     DEPENDENCIES
-    moveit_msgs
     geometry_msgs
 )
 
@@ -105,7 +102,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ros_unity_messages
-   CATKIN_DEPENDS message_runtime moveit_msgs geometry_msgs
+   CATKIN_DEPENDS message_runtime geometry_msgs
 #  DEPENDS system_lib
 )
 

@@ -3,6 +3,8 @@
 
 #include "ros_unity_messages/UnityRequest.h"
 
-void unity_targets_subs_handler(const ros_unity_messages::UnityRequest::ConstPtr &message);
+void unity_targets_subs_handler(
+    const ros_unity_messages::UnityRequest::ConstPtr& message
+);
 
 #endif
