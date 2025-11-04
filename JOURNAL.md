@@ -9,7 +9,10 @@ Recording of how we worked on this project.
 - [x] Migrate the message and service definition
 - [x] Migrate the planner
     - [x] The service does not receive return value from Moveit?
-- [ ] Picking up the object
+- [ ] Moving into using simulated UR10e Hardware interface
+  - [x] Write the hardware interface
+  - [x] Update Unity to use `/joint_states` instead of relying on roscode extracting plan from moveit
+    - [ ] Figure out the joint movement direction?
 
 ## Journal
 
@@ -105,3 +108,9 @@ Adapted the fake hardware template from https://github.com/PickNikRobotics/ros_c
 It seems to work fine with the arm, but not the gripper. Maybe the interface was not implemented?
 
 Anyhow, got another painful debug session with the moveit configuration, where the "joints" config is actually "joint". -1h of my life, oof.
+
+### 04 Nov 2025
+
+We moved from intercepting the messages betweem Moveit and the hardware interface into adding a `joint_state_controller`, which read the joint configuration from the interface and publish it on `/joint_state`. This should allow it to work with either fake or real hardware, and user writing navigation algorithm do not have to make sure there is a way somehow to extract their control message to Unity.
+
+But that come with its own bug. Right now the arm seems to crumble into itself. We did do Rad2Deg conversion since the joint_state is published in radians, but unity expect degrees. Or maybe because of signed-ness? Either way, we need to actuate each joint individually, compare the movement between Rviz and Unity, and manually correct those that mismatched.

@@ -2,6 +2,7 @@
 
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/utils/moveit_error_code.h"
+#include "joint_debug.hpp"
 #include "ros/console.h"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
@@ -13,8 +14,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     MoveGroupInterface move_group_interface(PLANNING_GROUP);
 
-    // [TODO]: Syncronize Moveit and Unity robot configuration?
-    // [NOTE]: If the robot crash into stuff in Unity, this TODO is the culprit.
+    // Uncomment if you want to check Unity joint control script
+    // debug_joint(move_group_interface);
 
     // Let's start plan and execute!
     // Pre-Grasp pose
