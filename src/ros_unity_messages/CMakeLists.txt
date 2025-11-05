@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
     roscpp
     message_generation
     geometry_msgs
+    std_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -49,6 +50,8 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
     FILES
     UnityRequest.msg
+    UnityObject.msg
+    SyncUnityObjects.msg
 )
 
 # Generate services in the 'srv' folder
@@ -68,6 +71,7 @@ add_message_files(
 generate_messages(
     DEPENDENCIES
     geometry_msgs
+    std_msgs
 )
 
 ################################################
@@ -102,7 +106,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ros_unity_messages
-   CATKIN_DEPENDS message_runtime geometry_msgs
+   CATKIN_DEPENDS message_runtime geometry_msgs std_msgs
 #  DEPENDS system_lib
 )
 

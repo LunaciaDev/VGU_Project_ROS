@@ -9,10 +9,11 @@ Recording of how we worked on this project.
 - [x] Migrate the message and service definition
 - [x] Migrate the planner
     - [x] The service does not receive return value from Moveit?
-- [ ] Moving into using simulated UR10e Hardware interface
+- [x] Moving into using simulated UR10e Hardware interface
   - [x] Write the hardware interface
   - [x] Update Unity to use `/joint_states` instead of relying on roscode extracting plan from moveit
-    - [ ] Figure out the joint movement direction?
+    - [x] Figure out the joint movement direction?
+- [ ] Sync objects from Unity to ROS
 
 ## Journal
 
@@ -114,3 +115,9 @@ Anyhow, got another painful debug session with the moveit configuration, where t
 We moved from intercepting the messages betweem Moveit and the hardware interface into adding a `joint_state_controller`, which read the joint configuration from the interface and publish it on `/joint_state`. This should allow it to work with either fake or real hardware, and user writing navigation algorithm do not have to make sure there is a way somehow to extract their control message to Unity.
 
 But that come with its own bug. Right now the arm seems to crumble into itself. We did do Rad2Deg conversion since the joint_state is published in radians, but unity expect degrees. Or maybe because of signed-ness? Either way, we need to actuate each joint individually, compare the movement between Rviz and Unity, and manually correct those that mismatched.
+
+Corrected the arm. Nothing too major, it assumed that the joints will always be in a certain order, which.. I cant find any docs about so far? Has to switch on string, a bit bad, but, oh well.
+
+### 05 Nov 2025
+
+Writing messages definition for object sync. I will let C++ handle adding to the scene since adding directly via publisher requires header, which I dont wanna touch..
