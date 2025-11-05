@@ -3,6 +3,7 @@
 #include "ros/node_handle.h"
 #include "ros/spinner.h"
 #include "ros/subscriber.h"
+#include "unity_objects_listener.hpp"
 #include "unity_targets_listener.hpp"
 
 int main(int argc, char** argv) {
@@ -13,7 +14,7 @@ int main(int argc, char** argv) {
     // 2 thread, one thread for subscriber callback, one thread for moveit
     // 2 thread for unity objects, probably
     // callback
-    ros::AsyncSpinner spinner = ros::AsyncSpinner(2);
+    ros::AsyncSpinner spinner = ros::AsyncSpinner(4);
 
     spinner.start();
 
@@ -24,7 +25,10 @@ int main(int argc, char** argv) {
     );
 
     // Unity Objects subscriber
-    // [TODO]
+    ROS_INFO("Registering unity_objects subscriber");
+    const ros::Subscriber unity_objects_subscriber = node_handle.subscribe(
+        "/unity_bridge/unity_objects", 1000, unity_objects_sub_handler
+    );
 
     ROS_INFO("unity_bridge node ready for action.");
 
