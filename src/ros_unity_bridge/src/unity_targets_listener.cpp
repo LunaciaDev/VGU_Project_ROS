@@ -4,9 +4,12 @@
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
+#include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros/duration.h"
 #include "ros_unity_messages/UnityObject.h"
+
+// ---
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 using PlanningSceneInterface =
@@ -14,12 +17,20 @@ using PlanningSceneInterface =
 using UnityRequest = ros_unity_messages::UnityRequest;
 using UnityObject = ros_unity_messages::UnityObject;
 
+// ---
+
+static const std::string   PLANNING_FRAME = "arm_base_link";
+static const std::string   ARM_PLANNING_GROUP = "robot_arm";
+static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
+static const ros::Duration SLEEP_TIMER = ros::Duration(1, 500000);
+
+// ---
+
 static void update_planning_scene(
-    const std::vector<UnityObject> unity_objects,
-    PlanningSceneInterface         planning_scene_interface
+    const std::vector<UnityObject>& unity_objects,
+    PlanningSceneInterface&         planning_scene_interface
 ) {
     const auto known_ids = planning_scene_interface.getObjects();
-    static const std::string PLANNING_FRAME = "arm_base_link";
     std::vector<moveit_msgs::CollisionObject> scene_objects_list;
 
     // for each object received from Unity
@@ -58,15 +69,34 @@ static void update_planning_scene(
     planning_scene_interface.applyCollisionObjects(scene_objects_list);
 }
 
+static moveit_msgs::CollisionObject generate_cube(
+    const geometry_msgs::Pose& location
+) {
+    // The CUBE is located at pick_pose, size 5cm
+    moveit_msgs::CollisionObject scene_object;
+    scene_object.id = "CUBE";
+    scene_object.header.frame_id = PLANNING_FRAME;
+    scene_object.operation = scene_object.ADD;
+
+    shape_msgs::SolidPrimitive primitive;
+    primitive.type = primitive.BOX;
+    primitive.dimensions.resize(3, 0.05);
+    scene_object.primitives.push_back(primitive);
+
+    geometry_msgs::Pose primitive_pose = location;
+    primitive_pose.position.z = primitive_pose.position.z - 0.195;
+    scene_object.primitive_poses.push_back(primitive_pose);
+
+    return scene_object;
+}
+
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
-    static const std::string   ARM_PLANNING_GROUP = "robot_arm";
-    static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
-    static const ros::Duration sleep_timer = ros::Duration(1, 500000);
     ROS_INFO("Received target message from Unity.");
 
     MoveGroupInterface     arm_move_group_interface(ARM_PLANNING_GROUP);
     MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
-    const PlanningSceneInterface planning_scene_interface;
+    PlanningSceneInterface planning_scene_interface;
+    const moveit_msgs::CollisionObject the_cube = generate_cube(message->pick_pose);
 
     // Allow replanning if scene change, would come in useful when scene change?
     arm_move_group_interface.allowReplanning(true);
@@ -92,7 +122,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Pre-grasp pose executed");
 
     // Open the gripper
@@ -112,14 +142,17 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Pick pose executed");
-
-    // [TODO]: Attach the cube here to arm_tcp_link
 
     // Close the gripper
     gripper_move_group_interface.setNamedTarget("gripper_close");
     gripper_move_group_interface.move();
+
+    // Add cube to PlanningScene
+    planning_scene_interface.applyCollisionObject(the_cube);
+    // Attach to arm_tcp_link, specifying safe self-collision with gripper fingers
+    arm_move_group_interface.attachObject("CUBE", "arm_tcp_link", {"gripper_right_inner_finger", "gripper_left_inner_finger"});
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
@@ -129,7 +162,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
         return;
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Pickup pose executed");
 
     // Pre-place Pose
@@ -140,7 +173,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Pre-place pose executed");
 
     // Place Pose
@@ -155,14 +188,15 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Place pose executed");
 
     // Open the gripper
     gripper_move_group_interface.setNamedTarget("gripper_open");
     gripper_move_group_interface.move();
 
-    // [TODO]: Detach the cube here from arm_tcp_link
+    arm_move_group_interface.detachObject("CUBE");
+    planning_scene_interface.removeCollisionObjects({"CUBE"});
 
     // Lift-up Pose
     ROS_INFO("Planning and executing lift-up pose");
@@ -172,7 +206,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
         return;
     }
-    sleep_timer.sleep();
+    SLEEP_TIMER.sleep();
     ROS_INFO("Lift-up pose executed");
 
     // Return gripper to neutral

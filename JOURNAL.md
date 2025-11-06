@@ -15,6 +15,7 @@ Recording of how we worked on this project.
     - [x] Figure out the joint movement direction?
 - [x] Sync objects from Unity to ROS
   - [ ] Maybe later: Figure out where does "empty quarternion" warn logs came from?
+- [x] Attach the cube to the arm when grabbing
 
 ## Journal
 
@@ -132,3 +133,9 @@ Now is to actually get my hands dirty and get path planning ready.
 ### 06 Nov 2025
 
 MoveIt seems to try to start the next movement way too early. Has been trying to tighten up velocity level considered as 0 and reducing joint constraint in `ros_controllers.yaml`, but it is fruitless. I guess I will have to sleep for a few second inbetween pose to be certain that the robot has stopped, 2 seconds should be plenty...
+
+Welp, dont know why, but the contraint is relaxed now. Static objects is updated via `PlanningSceneInterface`, but that take about 2 seconds to execute(?) so maybe no good? Beside, MoveGroup need to acknowledge the change so maybe it's too slow, no idea, will experiment again later.
+
+With that, the entire thing is almost ready, now I just need to add the cube into PlanningGroup of the arm so that they consider the grabbed cube whilst planning.
+
+Done and dusted. Now we can focus on improving the pathfinding part itself. Merging this to main!
