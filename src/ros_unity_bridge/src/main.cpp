@@ -5,7 +5,7 @@
 #include "ros/subscriber.h"
 #include "ros_unity_messages/SyncUnityObjects.h"
 #include "ros_unity_messages/UnityRequest.h"
-#include "unity_objects_listener.hpp"
+#include "static_objects_listener.hpp"
 #include "unity_targets_listener.hpp"
 
 int main(int argc, char** argv) {
@@ -28,9 +28,9 @@ int main(int argc, char** argv) {
         );
 
     // Unity Objects subscriber
-    ROS_INFO("Registering unity_objects subscriber");
+    ROS_INFO("Registering unity_static_objects subscriber");
     const ros::Subscriber unity_objects_subscriber = node_handle.subscribe<ros_unity_messages::SyncUnityObjects>(
-        "/unity_bridge/unity_objects", 1000, unity_objects_sub_handler
+        "/unity_bridge/unity_static_objects", 1000, unity_static_objects_sub_handler
     );
 
     ROS_INFO("unity_bridge node ready for action.");

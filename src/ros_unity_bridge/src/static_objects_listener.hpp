@@ -5,6 +5,6 @@
 
 using SyncUnityObjects = ros_unity_messages::SyncUnityObjects;
 
-void unity_objects_sub_handler(const SyncUnityObjects::ConstPtr& message);
+void unity_static_objects_sub_handler(const SyncUnityObjects::ConstPtr& message);
 
 #endif
