@@ -1,16 +1,17 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(pickandplace_project)
+project(fake_ur10e_control)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
-find_package(catkin REQUIRED
-    roscpp
-    ros_unity_integration
-    moveit_ros_planning_interface
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+find_package(catkin REQUIRED COMPONENTS
+  ros_control_boilerplate
 )
 
-# System dependencies are found with CMake's conventions
+## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
 
 ###################################
@@ -24,7 +25,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES pickandplace_project
+#  LIBRARIES fake_ur10e_control
 #  CATKIN_DEPENDS other_catkin_pkg
 #  DEPENDS system_lib
 )
@@ -34,9 +35,11 @@ catkin_package(
 ###########
 
 include_directories(${catkin_INCLUDE_DIRS})
-
-add_executable(robot_planner src/robot_planner.cpp)
-target_link_libraries(robot_planner
+add_executable(fake_ur10e_control src/main.cpp src/ur10e_fake_interface.cpp)
+add_dependencies(fake_ur10e_control
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(fake_ur10e_control
    ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
 
@@ -44,5 +47,4 @@ target_link_libraries(robot_planner
 ## Install ##
 #############
 
-install(TARGETS robot_planner DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(TARGETS fake_ur10e_control DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

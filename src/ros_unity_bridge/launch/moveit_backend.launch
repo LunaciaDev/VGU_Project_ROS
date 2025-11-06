@@ -1,4 +1,6 @@
-<launch>
+<launch>  
+    <arg name="use_rviz" default="true" />
+
     <!-- Load MoveIt configuration (URDF, SRDF and other .yaml configuration files) to the param server -->
     <include file="$(find robot_moveit)/launch/planning_context.launch">
       <arg name="load_robot_description" value="true"/>
@@ -7,13 +9,13 @@
     <!-- Static TF Publisher -->
     <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 0 0 0 world arm_base_link"/>
 
-    <!-- Joint State Publisher -->
-    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
-        <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
-    </node>
-
     <!-- Robot State Publisher -->
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+    <!-- Rviz -->
+    <include file="$(find robot_moveit)/launch/moveit_rviz.launch" if="$(arg use_rviz)">
+        <arg name="rviz_config" value="$(find robot_moveit)/launch/moveit.rviz"/>
+    </include>
 
     <!-- Launch the Move Group -->
         <!-- Planning Pipelines -->
@@ -23,10 +25,16 @@
             </include>
         </group>
 
-        <!-- Fake Trajectory Executor -->
+        <!-- Trajectory Executor -->
         <include ns="move_group" file="$(find robot_moveit)/launch/trajectory_execution.launch.xml">
-            <arg name="moveit_controller_manager" value="fake"/>
+            <arg name="moveit_controller_manager" value="simple"/>
         </include>
+
+        <!-- Start fake hardware interface -->
+        <node name="ur10e_hardware_interface" pkg="fake_ur10e_control" type="fake_ur10e_control" output="screen" />
+
+        <!-- Load controller managers -->
+        <include file="$(find robot_moveit)/launch/ros_controllers.launch" />
 
         <!-- Start the move_group action server-->
         <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">

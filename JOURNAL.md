@@ -9,7 +9,13 @@ Recording of how we worked on this project.
 - [x] Migrate the message and service definition
 - [x] Migrate the planner
     - [x] The service does not receive return value from Moveit?
-- [ ] Picking up the object
+- [x] Moving into using simulated UR10e Hardware interface
+  - [x] Write the hardware interface
+  - [x] Update Unity to use `/joint_states` instead of relying on roscode extracting plan from moveit
+    - [x] Figure out the joint movement direction?
+- [x] Sync objects from Unity to ROS
+  - [ ] Maybe later: Figure out where does "empty quarternion" warn logs came from?
+- [x] Attach the cube to the arm when grabbing
 
 ## Journal
 
@@ -55,3 +61,81 @@ Apparently, you need another spinner thread to receive Moveit plan callback? I h
 Well, the service, sort of worked. Now is making it pick up the object.
 
 It seems like the issue is on Unity side first thing - it does not actuate the hand properly, this will take a while to fix.
+
+### 31 Oct 2025
+
+The gripper is fixed. Turns out Unity cannot handle the way the RG2 is constructed, so removing the inner link's collision box fix the issue. ~~It does not move exactly the same as in reality, however.~~
+(Edit 01 Nov 2025): It actually is working as defined, because the urdf for the gripper is defined as follows:
+```xml
+<joint name="gripper_finger_joint" type="revolute">
+    <origin rpy="0 0 0" xyz="0 -0.017178 0.125797"/>
+    <parent link="gripper_onrobot_rg2_base_link"/>
+    <child link="gripper_left_outer_knuckle"/>
+    <axis xyz="-1 0 0"/>
+    <limit effort="1000" lower="-0.558505" upper="0.785398" velocity="100.0"/>
+  </joint>
+  <joint name="gripper_left_inner_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_left_inner_finger_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_outer_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_inner_knuckle_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="-1" offset="0"/>
+  </joint>
+  <joint name="gripper_right_inner_finger_joint" type="revolute">
+    ...
+    <mimic joint="gripper_finger_joint" multiplier="1" offset="0"/>
+  </joint>
+```
+So manually controlling the joints via mimicking input would be the same as if the gripper is controlled via driver.
+
+Switching into pub/sub model would allow us to attach Unity into a working robot pipeline without too much disruption. Another day, another rewrite.
+
+### 01 Nov 2025
+
+As one may notice, the pub-sub migration stopped dead at simple hardware implementation.
+
+Using Moveit fake controller, everything happen inside Moveit as far as I can tell. Potentials topics yielded not much usable for controlling the robot simulation. So, a fake hardware interface is needed, as we switch to ROS' simple controllers. This way, we can hook up into the communication between Moveit and the hardware interface to control the Unity simulator. If we was allowed to use the actual robot, not much change is needed. Also, that allow us to switch to commands, so the system is free to react and course-correct, which proved difficult if implemented using service.
+
+Now is just writing the hardware node, ugh.
+
+Adapted the fake hardware template from https://github.com/PickNikRobotics/ros_control_boilerplate.
+It seems to work fine with the arm, but not the gripper. Maybe the interface was not implemented?
+
+Anyhow, got another painful debug session with the moveit configuration, where the "joints" config is actually "joint". -1h of my life, oof.
+
+### 04 Nov 2025
+
+We moved from intercepting the messages betweem Moveit and the hardware interface into adding a `joint_state_controller`, which read the joint configuration from the interface and publish it on `/joint_state`. This should allow it to work with either fake or real hardware, and user writing navigation algorithm do not have to make sure there is a way somehow to extract their control message to Unity.
+
+But that come with its own bug. Right now the arm seems to crumble into itself. We did do Rad2Deg conversion since the joint_state is published in radians, but unity expect degrees. Or maybe because of signed-ness? Either way, we need to actuate each joint individually, compare the movement between Rviz and Unity, and manually correct those that mismatched.
+
+Corrected the arm. Nothing too major, it assumed that the joints will always be in a certain order, which.. I cant find any docs about so far? Has to switch on string, a bit bad, but, oh well.
+
+### 05 Nov 2025
+
+Writing messages definition for object sync. I will let C++ handle adding to the scene since adding directly via publisher requires header, which I dont wanna touch..
+
+Sync is built. First Unity publish raw data to us, which we transform into message passed into MoveIt to add to their Planning Scene. Have not tested how fast it can react to changing data from Unity? The problem is the frame rate of RViz on my machine is second per frame, so I have no idea how fast it react.
+
+Also, we are getting warn log of "empty quarternion". Quarternion is generated by Unity, so again, no idea! Might be exploring that soon. It shows no odd object rotation too, so maybe the default quarternion generated by Unity is not the same as ROS? But it's math...
+
+Now is to actually get my hands dirty and get path planning ready.
+
+### 06 Nov 2025
+
+MoveIt seems to try to start the next movement way too early. Has been trying to tighten up velocity level considered as 0 and reducing joint constraint in `ros_controllers.yaml`, but it is fruitless. I guess I will have to sleep for a few second inbetween pose to be certain that the robot has stopped, 2 seconds should be plenty...
+
+Welp, dont know why, but the contraint is relaxed now. Static objects is updated via `PlanningSceneInterface`, but that take about 2 seconds to execute(?) so maybe no good? Beside, MoveGroup need to acknowledge the change so maybe it's too slow, no idea, will experiment again later.
+
+With that, the entire thing is almost ready, now I just need to add the cube into PlanningGroup of the arm so that they consider the grabbed cube whilst planning.
+
+Done and dusted. Now we can focus on improving the pathfinding part itself. Merging this to main!

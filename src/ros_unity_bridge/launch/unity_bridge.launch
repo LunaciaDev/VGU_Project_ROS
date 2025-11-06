@@ -5,5 +5,5 @@
         <param name="tcp_port" type="int" value="10000"/>
     </node>
     <!-- Launch the service -->
-    <node name="robot_planner" pkg="pickandplace_project" type="robot_planner" output="screen"/>
+    <node name="unity_bridge" pkg="ros_unity_bridge" type="unity_bridge" output="screen"/>
 </launch>

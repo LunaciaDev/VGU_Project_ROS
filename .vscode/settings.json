@@ -3,7 +3,6 @@
         "--compile-commands-dir=${workspaceFolder}/build",
         "--completion-style=detailed",
         "--clang-tidy",
-        "--clang-tidy-checks=-*,modernize*",
-        "--header-insertion=never"
+        "--clang-tidy-checks=-*,modernize*"
     ]
 }

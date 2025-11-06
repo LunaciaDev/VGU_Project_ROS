@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ros_unity_integration)
+project(ros_unity_messages)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -10,8 +10,8 @@ project(ros_unity_integration)
 find_package(catkin REQUIRED COMPONENTS
     roscpp
     message_generation
-    moveit_msgs
     geometry_msgs
+    std_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -49,15 +49,15 @@ find_package(catkin REQUIRED COMPONENTS
 # Generate messages in the 'msg' folder
 add_message_files(
     FILES
-    Ur10eJoints.msg
-    Ur10eTrajectories.msg
+    UnityRequest.msg
+    UnityObject.msg
 )
 
 # Generate services in the 'srv' folder
-add_service_files(
-    FILES
-    IntegrationService.srv
-)
+#add_service_files(
+#    FILES
+#    new.srv
+#)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -69,8 +69,8 @@ add_service_files(
 # Generate added messages and services with any dependencies listed here
 generate_messages(
     DEPENDENCIES
-    moveit_msgs
     geometry_msgs
+    std_msgs
 )
 
 ################################################
@@ -104,8 +104,8 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES ros_unity_integration
-   CATKIN_DEPENDS message_runtime moveit_msgs geometry_msgs
+#  LIBRARIES ros_unity_messages
+   CATKIN_DEPENDS message_runtime geometry_msgs std_msgs
 #  DEPENDS system_lib
 )
 
