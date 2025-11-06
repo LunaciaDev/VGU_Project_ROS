@@ -51,7 +51,6 @@ add_message_files(
     FILES
     UnityRequest.msg
     UnityObject.msg
-    SyncUnityObjects.msg
 )
 
 # Generate services in the 'srv' folder
