@@ -11,10 +11,15 @@ using UnityRequest = ros_unity_messages::UnityRequest;
 
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     static const std::string PLANNING_GROUP = "robot_arm";
-    static const ros::Duration sleep_timer = ros::Duration(2, 0);
+    static const ros::Duration sleep_timer = ros::Duration(1, 500000);
     ROS_INFO("Received target message from Unity.");
 
     MoveGroupInterface move_group_interface(PLANNING_GROUP);
+
+    // Allow replanning if scene change, would come in useful when scene change?
+    move_group_interface.allowReplanning(true);
+    // Allow replan attempt in case the planner simply didnt find a path, there are time when it does that
+    move_group_interface.setNumPlanningAttempts(5);
 
     // Uncomment if you want to check Unity joint control script
     // debug_joint(move_group_interface);
