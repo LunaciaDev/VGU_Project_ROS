@@ -11,14 +11,15 @@ hardware_interface:
   sim_control_mode: 0
 # Settings for ros_control control loop
 generic_hw_control_loop:
-  loop_hz: 100
+  loop_hz: 500
   cycle_time_error_threshold: 0.01
 # Publish all joint states ----------------------------------
 # Creates the /joint_states topic necessary in ROS
 joint_state_controller:
   type:         joint_state_controller/JointStateController
-  publish_rate: 50
+  publish_rate: 500
 
+# Taken from https://github.com/UniversalRobots/Universal_Robots_ROS_Driver/blob/master/ur_robot_driver/config/ur10e_controllers.yaml
 robot_arm_controller:
   type: position_controllers/JointTrajectoryController
   joints:
@@ -29,26 +30,30 @@ robot_arm_controller:
     - arm_wrist_2_joint
     - arm_wrist_3_joint
   constraints:
-    goal_time: 0.01
-    stopped_velocity_tolerance: 0.01
-    arm_shoulder_lift_joint:
-      trajectory: 0.05
-      goal: 0.05
-    arm_shoulder_pan_joint:
-      trajectory: 0.05
-      goal: 0.05
-    arm_elbow_joint:
-      trajectory: 0.05
-      goal: 0.05
-    arm_wrist_1_joint:
-      trajectory: 0.05
-      goal: 0.05
-    arm_wrist_2_joint:
-      trajectory: 0.05
-      goal: 0.05
-    arm_wrist_3_joint:
-      trajectory: 0.05
-      goal: 0.05
+    goal_time: 0.6
+    stopped_velocity_tolerance: 0.05
+    shoulder_pan_joint:
+      trajectory: 0.2
+      goal: 0.1
+    shoulder_lift_joint:
+      trajectory: 0.2
+      goal: 0.1
+    elbow_joint:
+      trajectory: 0.2
+      goal: 0.1
+    wrist_1_joint:
+      trajectory: 0.2
+      goal: 0.1
+    wrist_2_joint:
+      trajectory: 0.2
+      goal: 0.1
+    wrist_3_joint:
+      trajectory: 0.2
+      goal: 0.1
+  state_publish_rate: 500
+  stop_trajectory_duration: 0.5
+  action_monitor_rate: 20
+  
 robot_gripper_controller:
   type: position_controllers/GripperActionController
   joint: gripper_finger_joint
