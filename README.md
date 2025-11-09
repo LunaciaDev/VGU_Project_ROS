@@ -13,7 +13,7 @@ The repositories that are part of the project are listed below:
 
 This repository holds the Robot Operating System ([ROS](https://www.ros.org/)) components used to control the robot. We targets the [Noetic Ninjemys](https://wiki.ros.org/noetic) release.
 
-# Structure
+## Structure
 
 ```
 src
@@ -47,18 +47,18 @@ src
 
 `ur10e_config/ur10e_moveit` package provide the MoveIt! configuration to plan and control the robot.
 
-# Installation
+## Installation
 
 The repository is designed to run inside Github Codespaces, but we also provided a general installation script in [`install.sh`](install.sh). Please note that the general installation script is meant for Ubuntu [Focal Fossa](https://www.releases.ubuntu.com/focal/) release, and may need some tweaks depending on your system and your needs.
 
-# Building
+## Building
 
 Please make sure that all dependencies are installed (See Installation above) before building.
 
 To build the project, run `catkin_make`.
 To also export `compile_commands.json` for development tools, run `catkin_make -DCMAKE_EXPORT_COMPILE_COMMANDS=1`.
 
-# Usage
+## Usage
 
 After building, you will need to launch MoveIt! backend, the communication endpoint between ROS and Unity as well as application code:
 
