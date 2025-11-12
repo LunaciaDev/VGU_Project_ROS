@@ -8,17 +8,21 @@
 
 int main(int argc, char** argv) {
     ROS_INFO("Starting unity_bridge node");
+
+    // Initialize the node
     ros::init(argc, argv, "unity_bridge");
     ros::NodeHandle node_handle;
 
-    // 3 thread, one thread for subscriber callback, one thread for moveit, one
-    // for static objects?
-    // callback
+    // Create 3 threads for the node.
+    // 1 thread run the handler for the subscriber on unity_targets topic.
+    // 1 thread to call MoveIt Move Group Interface
+    // 1 thread to call MoveIt Planning Scene Interface.
     ros::AsyncSpinner spinner = ros::AsyncSpinner(3);
-
     spinner.start();
 
-    // Unity Targets subscriber
+    // Subscriber to unity_targets topic
+    // This topic is published by Unity when it want to start the planning and
+    // execution of pick and place task.
     ROS_INFO("Registering unity_targets subscriber");
     const ros::Subscriber unity_targets_subscriber =
         node_handle.subscribe<ros_unity_messages::UnityRequest>(

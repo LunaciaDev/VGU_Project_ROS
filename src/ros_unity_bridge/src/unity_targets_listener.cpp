@@ -22,10 +22,16 @@ using UnityObject = ros_unity_messages::UnityObject;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
-static const ros::Duration SLEEP_TIMER = ros::Duration(1, 500000);
+static const ros::Duration SLEEP_TIMER =
+    ros::Duration(1, 500000);  // sleep for 1.5s
 
 // ---
 
+/**
+ * Populate the Planning Scene with objects from Unity.
+ * This function is blocking until MoveIt confirms that all object has been
+ * added into the Scene.
+ */
 static void update_planning_scene(
     const std::vector<UnityObject>& unity_objects,
     PlanningSceneInterface&         planning_scene_interface
@@ -44,8 +50,11 @@ static void update_planning_scene(
         shape_msgs::SolidPrimitive primitive;
         primitive.type = primitive.BOX;
         primitive.dimensions.resize(3);
+
         // During the conversion to ROS coordinate space, the y value is
-        // inverted z in Unity
+        // inverted.
+
+        // z in Unity
         primitive.dimensions[primitive.BOX_X] = object.scale.x;
         // -x in Unity, notice the negative
         primitive.dimensions[primitive.BOX_Y] = -object.scale.y;
@@ -69,6 +78,18 @@ static void update_planning_scene(
     planning_scene_interface.applyCollisionObjects(scene_objects_list);
 }
 
+/**
+ * Generate the target cube.
+ * This is a workaround for an issue where the target cube cannot exist within
+ * the scene as for the gripper to grip the cube, its finger joint MUST collide
+ * with the cube, which is not allowed by MoveIt.
+ * This work around should be removed once we can handle dynamic objects.
+ * [FIXME]: Remove this after dynamic objects is implemented.
+ * [NOTE]: Once it is implemented, we could attach the cube into the arm
+ * specifying that collision between finger and cube is fine? Then the gripper
+ * can lock into that. Also experiment if that attachment would conflict with
+ * dynamic object code.
+ */
 static moveit_msgs::CollisionObject generate_cube(
     const geometry_msgs::Pose& location
 ) {
@@ -90,15 +111,34 @@ static moveit_msgs::CollisionObject generate_cube(
     return scene_object;
 }
 
+/**
+ * Handler for request to execute pick and place from Unity.
+ *
+ * We first build the static objects in the planning scene according to the
+ * message, then execute pick and place.
+ *
+ * The pick and place consist of these step:
+ * - Move to top of the target.
+ * - Lower the gripper.
+ * - Grasp the cube.
+ * - Pull the gripper up.
+ * - Move to top of where the target needed to be placed.
+ * - Lower the gripper.
+ * - Release the cube.
+ * - Pull the gripper up.
+ * - Return the robot to all-zero position.
+ */
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
-    ROS_INFO("Received target message from Unity.");
+    ROS_INFO("Received planning request from Unity.");
 
     MoveGroupInterface     arm_move_group_interface(ARM_PLANNING_GROUP);
     MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
     PlanningSceneInterface planning_scene_interface;
-    const moveit_msgs::CollisionObject the_cube = generate_cube(message->pick_pose);
+    const moveit_msgs::CollisionObject the_cube =
+        generate_cube(message->pick_pose);
 
-    // Allow replanning if scene change, would come in useful when scene change?
+    // Allow replanning if scene change, would come in useful in dynamic object
+    // scenario?
     arm_move_group_interface.allowReplanning(true);
     // Allow replan attempt in case the planner simply didnt find a path, there
     // are time when it does that
@@ -112,6 +152,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
+    ROS_INFO("Planning Scene updated with static objects.");
 
     // Let's start plan and execute!
     // Pre-Grasp pose
@@ -122,12 +163,15 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Pre-grasp pose executed");
 
     // Open the gripper
     gripper_move_group_interface.setNamedTarget("gripper_open");
     gripper_move_group_interface.move();
+    ROS_INFO("Gripper opened");
 
     // Pick pose
     {
@@ -142,17 +186,24 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Pick pose executed");
 
     // Close the gripper
     gripper_move_group_interface.setNamedTarget("gripper_close");
     gripper_move_group_interface.move();
+    ROS_INFO("Gripper closed");
 
     // Add cube to PlanningScene
     planning_scene_interface.applyCollisionObject(the_cube);
-    // Attach to arm_tcp_link, specifying safe self-collision with gripper fingers
-    arm_move_group_interface.attachObject("CUBE", "arm_tcp_link", {"gripper_right_inner_finger", "gripper_left_inner_finger"});
+    // Attach to arm_tcp_link, specifying safe self-collision with gripper
+    // fingers
+    arm_move_group_interface.attachObject(
+        "CUBE", "arm_tcp_link",
+        {"gripper_right_inner_finger", "gripper_left_inner_finger"}
+    );
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
@@ -162,6 +213,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
         return;
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Pickup pose executed");
 
@@ -173,6 +226,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Pre-place pose executed");
 
@@ -188,13 +243,17 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Place pose executed");
 
     // Open the gripper
     gripper_move_group_interface.setNamedTarget("gripper_open");
     gripper_move_group_interface.move();
+    ROS_INFO("Gripper opened");
 
+    // Detach the cube from the arm, and remove the cube from the scene.
     arm_move_group_interface.detachObject("CUBE");
     planning_scene_interface.removeCollisionObjects({"CUBE"});
 
@@ -206,12 +265,15 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
         return;
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     SLEEP_TIMER.sleep();
     ROS_INFO("Lift-up pose executed");
 
     // Return gripper to neutral
     gripper_move_group_interface.setNamedTarget("gripper_neutral");
     gripper_move_group_interface.move();
+    ROS_INFO("Gripper returned to neutral state.");
 
     // Return to starting position
     {
@@ -224,5 +286,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
+    // Sleep a wee bit to be 100% certain that the robot has stabilized.
+    // [FIXME]: Fiddle with the config so these can be removed.
     ROS_INFO("All-zero pose executed");
+    ROS_INFO("Pick and Place task finished.");
 }

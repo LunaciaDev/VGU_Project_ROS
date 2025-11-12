@@ -3,34 +3,42 @@
 # Halt the script if any step return non-zero
 set -euo pipefail
 
-# Add ROS Noetic repository
+# Enable Restricted, Universe and Multiverse release stream.
+sudo apt-get install software-properties-common
+sudo add-apt-repository "deb http://archive.ubuntu.com/ubuntu $(lsb_release -sc) main universe restricted multiverse"
+
+# Add ROS Noetic Package Repository
 sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-## Add the signing key of Noetic
+## Import signing key for ROS Noetic packages
 curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 
 # Update the repository information
 sudo apt-get update
 
-# Install Base ROS Noetic and rosdep, as well as python is python3 system alias
+# Install Base ROS Noetic, ROS dependencies manager, GCC and aliasing `python` to python3.
 sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
 
-# Source ROS Environments
+# Source the environment for ROS
 source /opt/ros/noetic/setup.bash
 
-# Install listed dependencies
+# Install all listed dependencies in package.xml
 sudo rosdep init
 rosdep update --rosdistro=noetic
 rosdep install --from-paths src -y --ignore-src --rosdistro=noetic
 
-# Optional: Allow X Forwarding for GUI applications
-sudo apt-get install -y openssh-server
-echo "export DISPLAY='127.0.0.1:10.0'" >> ~/.bashrc
-touch ~/.Xauthority
+## ENVIRONMENT VARIABLES
+# Enable/disable them as you see fit, none of these are required
 
 # Automatic sourcing of ROS files for new terminal session
-# Will print an error if the workspace was not built
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-echo "source /workspaces/VGU_Project_ROS/devel/setup.bash" >> ~/.bashrc
+# Replace <path> with the local path to this
+# echo "source <path>/devel/setup.bash" >> ~/.bashrc
+
+# Switch to non-persistent logs
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
+
+# More useful console logs format
 echo export ROSCONSOLE_FORMAT=\''[${severity}] [${walltime:%Y-%m-%d %H:%M:%S}] [${node}]: ${message}'\' >> ~/.bashrc
+
+# Disable EOL Warning for RViz
 echo "export DISABLE_ROS1_EOL_WARNINGS=1" >> ~/.bashrc
