@@ -32,7 +32,7 @@ rosdep install --from-paths src -y --ignore-src --rosdistro=noetic
 # Automatic sourcing of ROS files for new terminal session
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
 # Replace <path> with the local path to this
-# echo "source <path>/devel/setup.bash" >> ~/.bashrc
+# echo "source <path>/devel_isolated/setup.bash" >> ~/.bashrc
 
 # Switch to non-persistent logs
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
