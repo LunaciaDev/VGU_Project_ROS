@@ -1,4 +1,5 @@
-float64[6] joints
-geometry_msgs/Pose pick_pose
-geometry_msgs/Pose place_pose
+geometry_msgs/Pose pre_pick_location
+geometry_msgs/Pose pre_place_location
+geometry_msgs/Pose pick_location
+geometry_msgs/Pose place_location
 UnityObject[] static_objects

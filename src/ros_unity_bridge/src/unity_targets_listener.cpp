@@ -8,6 +8,7 @@
 #include "ros/console.h"
 #include "ros/duration.h"
 #include "ros_unity_messages/UnityObject.h"
+#include "rviz_visual_tools/rviz_visual_tools.h"
 
 // ---
 
@@ -79,6 +80,29 @@ static void update_planning_scene(
 }
 
 /**
+ * Draw an arrow at each location sent from Unity on RViz.
+ */
+static void generate_markers(const UnityRequest::ConstPtr& message) {
+    auto visual_tool = new rviz_visual_tools::RvizVisualTools(
+        "arm_base_link", "/rviz_visual_markers"
+    );
+    visual_tool->deleteAllMarkers();
+
+    // For each pose, create an arrow for it.
+    visual_tool->publishArrow(
+        message->pre_pick_location, rviz_visual_tools::RED
+    );
+    visual_tool->publishArrow(message->pick_location, rviz_visual_tools::GREEN);
+    visual_tool->publishArrow(
+        message->pre_place_location, rviz_visual_tools::BLUE
+    );
+    visual_tool->publishArrow(
+        message->place_location, rviz_visual_tools::YELLOW
+    );
+    visual_tool->trigger();
+}
+
+/**
  * Generate the target cube.
  * This is a workaround for an issue where the target cube cannot exist within
  * the scene as for the gripper to grip the cube, its finger joint MUST collide
@@ -104,9 +128,7 @@ static moveit_msgs::CollisionObject generate_cube(
     primitive.dimensions.resize(3, 0.05);
     scene_object.primitives.push_back(primitive);
 
-    geometry_msgs::Pose primitive_pose = location;
-    primitive_pose.position.z = primitive_pose.position.z - 0.195;
-    scene_object.primitive_poses.push_back(primitive_pose);
+    scene_object.primitive_poses.push_back(location);
 
     return scene_object;
 }
@@ -135,7 +157,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
     PlanningSceneInterface planning_scene_interface;
     const moveit_msgs::CollisionObject the_cube =
-        generate_cube(message->pick_pose);
+        generate_cube(message->pick_location);
+
+    // [DEBUG]: Show the location of all poses on rviz
+    // generate_markers(message);
 
     // Allow replanning if scene change, would come in useful in dynamic object
     // scenario?
@@ -149,7 +174,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // Set gripper to always use OMPL
     gripper_move_group_interface.setPlanningPipelineId("ompl");
 
-    // Uncomment if you want to check Unity joint control script
+    // [DEBUG]: check Unity joint control script
     // debug_joint(move_group_interface);
 
     // Build the planning scene
@@ -159,7 +184,9 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // Let's start plan and execute!
     // Pre-Grasp pose
     ROS_INFO("Planning and executing pre-grasp pose");
-    arm_move_group_interface.setPoseTarget(message->pick_pose, "arm_tcp_link");
+    arm_move_group_interface.setPoseTarget(
+        message->pre_pick_location, "arm_tcp_link"
+    );
     if (arm_move_group_interface.move() !=
         moveit::core::MoveItErrorCode::SUCCESS) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
@@ -176,17 +203,14 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Gripper opened");
 
     // Pick pose
-    {
-        auto pick_pose = geometry_msgs::Pose(message->pick_pose);
-        pick_pose.position.z = pick_pose.position.z - 0.18;
-
-        ROS_INFO("Planning and executing pick pose");
-        arm_move_group_interface.setPoseTarget(pick_pose, "arm_tcp_link");
-        if (arm_move_group_interface.move() !=
-            moveit::core::MoveItErrorCode::SUCCESS) {
-            ROS_ERROR("Failed to move to pick pose, exiting");
-            return;
-        }
+    ROS_INFO("Planning and executing pick pose");
+    arm_move_group_interface.setPoseTarget(
+        message->pick_location, "arm_tcp_link"
+    );
+    if (arm_move_group_interface.move() !=
+        moveit::core::MoveItErrorCode::SUCCESS) {
+        ROS_ERROR("Failed to move to pick pose, exiting");
+        return;
     }
     // Sleep a wee bit to be 100% certain that the robot has stabilized.
     // [FIXME]: Fiddle with the config so these can be removed.
@@ -209,7 +233,9 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
-    arm_move_group_interface.setPoseTarget(message->pick_pose, "arm_tcp_link");
+    arm_move_group_interface.setPoseTarget(
+        message->pre_pick_location, "arm_tcp_link"
+    );
     if (arm_move_group_interface.move() !=
         moveit::core::MoveItErrorCode::SUCCESS) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
@@ -222,10 +248,12 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
-    arm_move_group_interface.setPoseTarget(message->place_pose, "arm_tcp_link");
+    arm_move_group_interface.setPoseTarget(
+        message->pre_place_location, "arm_tcp_link"
+    );
     if (arm_move_group_interface.move() !=
         moveit::core::MoveItErrorCode::SUCCESS) {
-        ROS_ERROR("Failed to move to pre_grasp pose, exiting");
+        ROS_ERROR("Failed to move to pre_place pose, exiting");
         return;
     }
     // Sleep a wee bit to be 100% certain that the robot has stabilized.
@@ -234,16 +262,14 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Pre-place pose executed");
 
     // Place Pose
-    {
-        auto place_pose = geometry_msgs::Pose(message->place_pose);
-        place_pose.position.z = place_pose.position.z - 0.15;
-        ROS_INFO("Planning and executing place pose");
-        arm_move_group_interface.setPoseTarget(place_pose, "arm_tcp_link");
-        if (arm_move_group_interface.move() !=
-            moveit::core::MoveItErrorCode::SUCCESS) {
-            ROS_ERROR("Failed to move to place pose, exiting");
-            return;
-        }
+    ROS_INFO("Planning and executing place pose");
+    arm_move_group_interface.setPoseTarget(
+        message->place_location, "arm_tcp_link"
+    );
+    if (arm_move_group_interface.move() !=
+        moveit::core::MoveItErrorCode::SUCCESS) {
+        ROS_ERROR("Failed to move to place pose, exiting");
+        return;
     }
     // Sleep a wee bit to be 100% certain that the robot has stabilized.
     // [FIXME]: Fiddle with the config so these can be removed.
@@ -261,7 +287,9 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Lift-up Pose
     ROS_INFO("Planning and executing lift-up pose");
-    arm_move_group_interface.setPoseTarget(message->place_pose, "arm_tcp_link");
+    arm_move_group_interface.setPoseTarget(
+        message->pre_place_location, "arm_tcp_link"
+    );
     if (arm_move_group_interface.move() !=
         moveit::core::MoveItErrorCode::SUCCESS) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
