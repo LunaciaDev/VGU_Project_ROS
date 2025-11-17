@@ -21,6 +21,7 @@
         <!-- Planning Pipelines -->
         <group ns="move_group/planning_pipelines">
             <!-- Always include OMPL to take control of the gripper -->
+            <!-- Copy and paste this for every pipeline you need. -->
             <include file="$(find robot_moveit)/launch/planning_pipeline.launch.xml">
                 <arg name="pipeline" value="ompl" />
             </include>
@@ -41,7 +42,7 @@
         <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">
             <param name="allow_trajectory_execution" value="true"/>
             <param name="sense_for_plan/max_safe_path_cost" value="1"/>
-            <param name="default_planning_pipeline" value="OMPL" />
+            <param name="default_planning_pipeline" value="ompl" />
 
             <!-- do not copy dynamics information from /joint_states to internal robot monitoring
                 default to false, because almost nothing in move_group relies on this information -->

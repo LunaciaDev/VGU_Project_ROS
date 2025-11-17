@@ -146,6 +146,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Same config for gripper
     gripper_move_group_interface.setNumPlanningAttempts(5);
+    // Set gripper to always use OMPL
+    gripper_move_group_interface.setPlanningPipelineId("ompl");
 
     // Uncomment if you want to check Unity joint control script
     // debug_joint(move_group_interface);
