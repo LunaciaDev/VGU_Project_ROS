@@ -15,8 +15,8 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 # Update the repository information
 sudo apt-get update
 
-# Install Base ROS Noetic, ROS dependencies manager, GCC and aliasing `python` to python3.
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
+# Install Base ROS Noetic, ROS dependencies manager, GCC, aliasing `python` to python3, jq to concatenate compile_commands
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3 jq
 
 # Source the environment for ROS
 source /opt/ros/noetic/setup.bash
@@ -32,7 +32,7 @@ rosdep install --from-paths src -y --ignore-src --rosdistro=noetic
 # Automatic sourcing of ROS files for new terminal session
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
 # Replace <path> with the local path to this
-# echo "source <path>/devel/setup.bash" >> ~/.bashrc
+# echo "source <path>/devel_isolated/setup.bash" >> ~/.bashrc
 
 # Switch to non-persistent logs
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc

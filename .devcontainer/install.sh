@@ -11,8 +11,8 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 # Update the repository information
 sudo apt-get update
 
-# Install Base ROS Noetic and rosdep, as well as python is python3 system alias
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
+# Install Base ROS Noetic, rosdep, python is python3 system alias and jq for json concat
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3 jq
 
 # Source ROS Environments
 source /opt/ros/noetic/setup.bash
@@ -30,7 +30,7 @@ touch ~/.Xauthority
 # Automatic sourcing of ROS files for new terminal session
 # Will print an error if the workspace was not built
 echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-echo "source /workspaces/VGU_Project_ROS/devel/setup.bash" >> ~/.bashrc
+echo "source /workspaces/VGU_Project_ROS/devel_isolated/setup.bash" >> ~/.bashrc
 echo "export ROS_LOG_DIR='/tmp/ros'" >> ~/.bashrc
 echo export ROSCONSOLE_FORMAT=\''[${severity}] [${walltime:%Y-%m-%d %H:%M:%S}] [${node}]: ${message}'\' >> ~/.bashrc
 echo "export DISABLE_ROS1_EOL_WARNINGS=1" >> ~/.bashrc
