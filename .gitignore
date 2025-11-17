@@ -3,3 +3,4 @@ build_isolated/
 .cache/
 devel_isolated/
 .vscode/
+compile_commands.json

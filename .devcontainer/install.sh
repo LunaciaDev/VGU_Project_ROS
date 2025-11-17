@@ -11,8 +11,8 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 # Update the repository information
 sudo apt-get update
 
-# Install Base ROS Noetic and rosdep, as well as python is python3 system alias
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3
+# Install Base ROS Noetic, rosdep, python is python3 system alias and jq for json concat
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3 jq
 
 # Source ROS Environments
 source /opt/ros/noetic/setup.bash
