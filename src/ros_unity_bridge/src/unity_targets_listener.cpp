@@ -1,6 +1,7 @@
 #include "unity_targets_listener.hpp"
 
 #include <cstdlib>
+#include <unordered_map>
 
 #include "joint_debug.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
@@ -32,8 +33,9 @@ static const ros::Duration SLEEP_TIMER =
 
 // Planning statistic
 static double planning_time = 0;
-static double total_joint_trajectory[6] = {0, 0, 0, 0, 0, 0};
-static double previous_joint_position[6] = {0, 0, 0, 0, 0, 0};
+static const std::string associated_joint_name[6] = {"arm_elbow_joint", "arm_shoulder_lift_joint", "arm_shoulder_pan_joint", "arm_wrist_1_joint", "arm_wrist_2_joint", "arm_wrist_3_joint"};
+static std::unordered_map<std::string, double> total_joint_trajectory;
+static std::unordered_map<std::string, double> previous_joint_position;
 
 // ---
 
@@ -163,17 +165,19 @@ static int planning_with_profiling(
         planning_time += plan.planning_time_;
         attempt += 1;
 
-        if (status == MoveItStatus::FAILURE && attempt >= 5) {
+        if (attempt >= 5) {
             return -1;
         }
     }
 
     planning_time += plan.planning_time_;
-    for (auto waypoints : plan.trajectory_.joint_trajectory.points) {
+    const std::vector<std::string> joint_names = plan.trajectory_.joint_trajectory.joint_names;
+
+    for (const auto waypoints : plan.trajectory_.joint_trajectory.points) {
         for (int i = 0; i < 6; i++) {
-            total_joint_trajectory[i] +=
-                abs(waypoints.positions[i] - previous_joint_position[i]);
-            previous_joint_position[i] = waypoints.positions[i];
+            const auto joint_name = joint_names[i];
+            total_joint_trajectory[joint_name] += abs(waypoints.positions[i] - previous_joint_position[joint_name]);
+            previous_joint_position[joint_name] = waypoints.positions[i];
         }
     }
 
@@ -246,6 +250,11 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // Set execution mode (With/Without profiling)
     // [TODO]: Expose this as an option
     auto planning_call = planning_with_profiling;
+    // Initialize maps
+    for (const std::string joint_name : associated_joint_name) {
+        total_joint_trajectory[joint_name] = 0;
+        previous_joint_position[joint_name] = 0;
+    }
     // auto planning_call = planning_pure;
 
     // Build the planning scene
@@ -386,10 +395,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Pick and Place task finished.");
 
     ROS_INFO("Total planning time: %.5f", planning_time);
-    ROS_INFO(
-        "Total joint movements: %.5f %.5f %.5f %.5f %.5f %.5f",
-        total_joint_trajectory[0], total_joint_trajectory[1],
-        total_joint_trajectory[2], total_joint_trajectory[3],
-        total_joint_trajectory[4], total_joint_trajectory[5]
-    );
+    for (const auto joint_moved_value : total_joint_trajectory) {
+        ROS_INFO("%s expected to move %.5f radians", joint_moved_value.first.c_str(), joint_moved_value.second);
+    }
 }
