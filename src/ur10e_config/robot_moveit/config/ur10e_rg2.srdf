@@ -37,7 +37,7 @@
         <joint name="gripper_finger_joint" value="0"/>
     </group_state>
     <group_state name="gripper_close" group="robot_gripper">
-        <joint name="gripper_finger_joint" value="0.3"/>
+        <joint name="gripper_finger_joint" value="0.32"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper" parent_link="arm_tool0" group="robot_gripper"/>

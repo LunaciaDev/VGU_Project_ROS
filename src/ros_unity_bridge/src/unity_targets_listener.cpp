@@ -32,7 +32,7 @@ static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
 static const ros::Duration SLEEP_TIMER =
-    ros::Duration(1, 500000);  // sleep for 1.5s
+    ros::Duration(2, 0);  // sleep for 1.5s
 
 // Planning statistic
 static double            planning_time = 0;
