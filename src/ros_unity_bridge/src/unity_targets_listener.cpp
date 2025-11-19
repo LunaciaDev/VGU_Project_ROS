@@ -26,6 +26,7 @@ using MoveItStatus = moveit::core::MoveItErrorCode;
 
 // ---
 
+static const int           PLANNING_ATTEMPTS = 5;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
@@ -159,7 +160,7 @@ static int planning_with_profiling(
     Plan plan = Plan();
     int  attempt = 0;
 
-    while (attempt < 5) {
+    while (attempt < PLANNING_ATTEMPTS) {
         auto status = arm_move_group_interface.plan(plan);
 
         if (status == MoveItStatus::SUCCESS) {
@@ -168,7 +169,7 @@ static int planning_with_profiling(
 
         attempt += 1;
 
-        if (attempt >= 5) {
+        if (attempt >= PLANNING_ATTEMPTS) {
             return -1;
         }
     }
@@ -311,12 +312,12 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.allowReplanning(true);
     // Allow replan attempt in case the planner simply didnt find a path, there
     // are time when it does that
-    arm_move_group_interface.setNumPlanningAttempts(5);
+    arm_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
     // Maximum 10s per attempt
     arm_move_group_interface.setPlanningTime(10);
 
     // Same config for gripper
-    gripper_move_group_interface.setNumPlanningAttempts(5);
+    gripper_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
     // Set gripper to always use OMPL
     gripper_move_group_interface.setPlanningPipelineId("ompl");
 
