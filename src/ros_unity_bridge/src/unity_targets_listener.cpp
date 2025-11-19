@@ -268,6 +268,8 @@ static void write_result() {
 
         if (i != 5) {
             fprintf(result_file_handle, ",");
+        } else {
+            fprintf(result_file_handle, "\n");
         }
     }
 
