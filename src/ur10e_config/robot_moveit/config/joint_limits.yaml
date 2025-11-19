@@ -7,37 +7,42 @@ default_acceleration_scaling_factor: 0.1
 
 # Specific joint properties can be changed with the keys [max_position, min_position, max_velocity, max_acceleration]
 # Joint limits can be turned off with [has_velocity_limits, has_acceleration_limits]
+
+# UR robot does not have acceleration limits (only torque limits!), so the max_acceleration value is chosen arbitrarily
+# so time parameterization can work. Of course, this is also another knob to tune for those interested.
+# Torque limit from base, shoulder, elbow, wrist1, wrist2, wrist3: 330Nm, 330Nm, 150Nm, 56Nm, 56Nm, 56Nm
+# (source: https://forum.universal-robots.com/t/maximum-axis-speed-acceleration/13338)
 joint_limits:
   arm_elbow_joint:
     has_velocity_limits: true
     max_velocity: 3.141592653589793
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   arm_shoulder_lift_joint:
     has_velocity_limits: true
     max_velocity: 2.094395102393195
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   arm_shoulder_pan_joint:
     has_velocity_limits: true
     max_velocity: 2.094395102393195
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   arm_wrist_1_joint:
     has_velocity_limits: true
     max_velocity: 3.141592653589793
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   arm_wrist_2_joint:
     has_velocity_limits: true
     max_velocity: 3.141592653589793
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   arm_wrist_3_joint:
     has_velocity_limits: true
     max_velocity: 3.141592653589793
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_acceleration_limits: true
+    max_acceleration: 5.0
   gripper_finger_joint:
     has_velocity_limits: true
     max_velocity: 100

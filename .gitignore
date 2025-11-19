@@ -1,5 +1,7 @@
-log/
-build/
 .cache/
-devel/
 .vscode/
+log/
+build_isolated/
+devel_isolated/
+compile_commands.json
+result.csv

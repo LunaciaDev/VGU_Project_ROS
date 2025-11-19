@@ -20,6 +20,8 @@
     <!-- Launch the Move Group -->
         <!-- Planning Pipelines -->
         <group ns="move_group/planning_pipelines">
+            <!-- Always include OMPL to take control of the gripper -->
+            <!-- Copy and paste this for every pipeline you need. -->
             <include file="$(find robot_moveit)/launch/planning_pipeline.launch.xml">
                 <arg name="pipeline" value="ompl" />
             </include>

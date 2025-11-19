@@ -4,3 +4,9 @@
 [submodule "src/dependencies/ros_tcp_endpoint"]
 	path = src/dependencies/ros_tcp_endpoint
 	url = https://github.com/Unity-Technologies/ROS-TCP-Endpoint
+[submodule "src/dependencies/stomp"]
+	path = src/dependencies/stomp
+	url = https://github.com/ros-industrial/stomp
+[submodule "src/dependencies/stomp_ros"]
+	path = src/dependencies/stomp_ros
+	url = https://github.com/ros-industrial/stomp_ros
