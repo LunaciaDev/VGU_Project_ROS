@@ -36,6 +36,8 @@ static const ros::Duration SLEEP_TIMER =
 
 // Planning statistic
 static double            planning_time = 0;
+static int               total_attempts = 0;
+static int               failed_attempts = 0;
 static const std::string associated_joint_name[6] = {
     "arm_elbow_joint",   "arm_shoulder_lift_joint", "arm_shoulder_pan_joint",
     "arm_wrist_1_joint", "arm_wrist_2_joint",       "arm_wrist_3_joint"
@@ -168,7 +170,8 @@ static int planning_with_profiling(
             break;
         }
 
-        planning_time += TIME_PER_ATTEMPT;
+        total_attempts += 1;
+        failed_attempts += 1;
         attempt += 1;
 
         if (attempt >= PLANNING_ATTEMPTS) {
@@ -176,6 +179,7 @@ static int planning_with_profiling(
         }
     }
 
+    total_attempts += 1;
     planning_time += plan.planning_time_;
     const std::vector<std::string> joint_names =
         plan.trajectory_.joint_trajectory.joint_names;
@@ -222,6 +226,8 @@ static void write_log_result() {
             joint_moved_value.second
         );
     }
+    ROS_INFO("Failed planning attempts: %d", failed_attempts);
+    ROS_INFO("Total attempts: %d", total_attempts);
 }
 
 /**
@@ -245,7 +251,7 @@ static void write_result() {
         }
 
         fprintf(
-            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s\n",
+            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
             associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
             associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
             associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
@@ -265,16 +271,12 @@ static void write_result() {
 
     for (int i = 0; i < 6; i++) {
         fprintf(
-            result_file_handle, "%.6f",
+            result_file_handle, "%.6f,",
             total_joint_trajectory[associated_joint_name[i]]
         );
-
-        if (i != 5) {
-            fprintf(result_file_handle, ",");
-        } else {
-            fprintf(result_file_handle, "\n");
-        }
     }
+
+    fprintf(result_file_handle, "%d,%d\n", failed_attempts, total_attempts);
 
     // Flush the result into file
     fflush(result_file_handle);
