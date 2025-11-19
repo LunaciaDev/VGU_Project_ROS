@@ -1,5 +1,9 @@
 #include "unity_targets_listener.hpp"
 
+#include <cstdio>
+#include <cstdlib>
+#include <unordered_map>
+
 #include "joint_debug.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
@@ -17,6 +21,8 @@ using PlanningSceneInterface =
     moveit::planning_interface::PlanningSceneInterface;
 using UnityRequest = ros_unity_messages::UnityRequest;
 using UnityObject = ros_unity_messages::UnityObject;
+using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
+using MoveItStatus = moveit::core::MoveItErrorCode;
 
 // ---
 
@@ -25,6 +31,15 @@ static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
 static const ros::Duration SLEEP_TIMER =
     ros::Duration(1, 500000);  // sleep for 1.5s
+
+// Planning statistic
+static double            planning_time = 0;
+static const std::string associated_joint_name[6] = {
+    "arm_elbow_joint",   "arm_shoulder_lift_joint", "arm_shoulder_pan_joint",
+    "arm_wrist_1_joint", "arm_wrist_2_joint",       "arm_wrist_3_joint"
+};
+static std::unordered_map<std::string, double> total_joint_trajectory;
+static std::unordered_map<std::string, double> previous_joint_position;
 
 // ---
 
@@ -134,6 +149,133 @@ static moveit_msgs::CollisionObject generate_cube(
 }
 
 /**
+ * Adapter for planning and executing a trajectory, with profiling.
+ *
+ * Return 0 on sucessfully executing the trajectory, -1 otherwise.
+ */
+static int planning_with_profiling(
+    MoveGroupInterface& arm_move_group_interface
+) {
+    Plan plan = Plan();
+    int  attempt = 0;
+
+    while (attempt < 5) {
+        auto status = arm_move_group_interface.plan(plan);
+
+        if (status == MoveItStatus::SUCCESS) {
+            break;
+        }
+
+        attempt += 1;
+
+        if (attempt >= 5) {
+            return -1;
+        }
+    }
+
+    planning_time += plan.planning_time_;
+    const std::vector<std::string> joint_names =
+        plan.trajectory_.joint_trajectory.joint_names;
+
+    for (const auto waypoints : plan.trajectory_.joint_trajectory.points) {
+        for (int i = 0; i < 6; i++) {
+            const auto joint_name = joint_names[i];
+            total_joint_trajectory[joint_name] +=
+                abs(waypoints.positions[i] -
+                    previous_joint_position[joint_name]);
+            previous_joint_position[joint_name] = waypoints.positions[i];
+        }
+    }
+
+    // execute the plan
+    if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Adapter for executing a trajectory, without profiling.
+ *
+ * Return 0 on success, and -1 otherwise.
+ */
+static int planning_no_profiling(MoveGroupInterface& arm_move_group_interface) {
+    if (arm_move_group_interface.move() != MoveItStatus::SUCCESS) {
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * Write the result into log. Back up in case for some reason we cannot open the
+ * csv.
+ */
+static void write_log_result() {
+    ROS_INFO("Total planning time: %.5f", planning_time);
+    for (const auto joint_moved_value : total_joint_trajectory) {
+        ROS_INFO(
+            "%s expected to move %.5f radians", joint_moved_value.first.c_str(),
+            joint_moved_value.second
+        );
+    }
+}
+
+/**
+ * Write the result of movement to a csv.
+ *
+ * If the csv cannot be opened, echo result into the console.
+ */
+static void write_result() {
+    // C-style since that's what I am familiar with
+    FILE* is_handle_exist = fopen("result.csv", "r");
+    FILE* result_file_handle;
+
+    // we did not create the file.
+    if (is_handle_exist == NULL) {
+        result_file_handle = fopen("result.csv", "a");
+
+        if (result_file_handle == NULL) {
+            // write to log
+            write_log_result();
+            return;
+        }
+
+        fprintf(
+            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s\n",
+            associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
+            associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
+            associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
+        );
+    } else {
+        result_file_handle = fopen("result.csv", "a");
+
+        if (result_file_handle == NULL) {
+            // write to log
+            write_log_result();
+            return;
+        }
+    }
+
+    // Write the result
+    fprintf(result_file_handle, "%.6f,", planning_time);
+
+    for (int i = 0; i < 6; i++) {
+        fprintf(
+            result_file_handle, "%.6f",
+            total_joint_trajectory[associated_joint_name[i]]
+        );
+
+        if (i != 5) {
+            fprintf(result_file_handle, ",");
+        }
+    }
+
+    // Flush the result into file
+    fflush(result_file_handle);
+}
+
+/**
  * Handler for request to execute pick and place from Unity.
  *
  * We first build the static objects in the planning scene according to the
@@ -168,6 +310,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // Allow replan attempt in case the planner simply didnt find a path, there
     // are time when it does that
     arm_move_group_interface.setNumPlanningAttempts(5);
+    // Maximum 10s per attempt
+    arm_move_group_interface.setPlanningTime(10);
 
     // Same config for gripper
     gripper_move_group_interface.setNumPlanningAttempts(5);
@@ -176,6 +320,16 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // [DEBUG]: check Unity joint control script
     // debug_joint(move_group_interface);
+
+    // Set execution mode (With/Without profiling)
+    // [TODO]: Expose this as an option
+    auto planning_call = planning_with_profiling;
+    // Initialize maps
+    for (const std::string joint_name : associated_joint_name) {
+        total_joint_trajectory[joint_name] = 0;
+        previous_joint_position[joint_name] = 0;
+    }
+    // auto planning_call = planning_pure;
 
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
@@ -187,8 +341,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
@@ -207,8 +360,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pick_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to pick pose, exiting");
         return;
     }
@@ -236,8 +388,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
         return;
     }
@@ -251,8 +402,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to pre_place pose, exiting");
         return;
     }
@@ -266,8 +416,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->place_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to place pose, exiting");
         return;
     }
@@ -290,8 +439,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
-    if (arm_move_group_interface.move() !=
-        moveit::core::MoveItErrorCode::SUCCESS) {
+    if (planning_call(arm_move_group_interface) != 0) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
         return;
     }
@@ -310,14 +458,14 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         std::vector<double> joint_group_position;
         joint_group_position.resize(6, 0);
         arm_move_group_interface.setJointValueTarget(joint_group_position);
-        if (arm_move_group_interface.move() !=
-            moveit::core::MoveItErrorCode::SUCCESS) {
+        if (planning_call(arm_move_group_interface) != 0) {
             ROS_ERROR("Failed to move to all-zero pose, exiting");
             return;
         }
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
+
+    // Write result to file
+    write_result();
 }

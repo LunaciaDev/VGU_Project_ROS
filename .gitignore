@@ -1,6 +1,7 @@
+.cache/
+.vscode/
 log/
 build_isolated/
-.cache/
 devel_isolated/
-.vscode/
 compile_commands.json
+result.csv
