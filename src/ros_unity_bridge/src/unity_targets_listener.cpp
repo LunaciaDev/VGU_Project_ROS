@@ -27,6 +27,7 @@ using MoveItStatus = moveit::core::MoveItErrorCode;
 // ---
 
 static const int           PLANNING_ATTEMPTS = 5;
+static const double        TIME_PER_ATTEMPT = 10;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
@@ -167,6 +168,7 @@ static int planning_with_profiling(
             break;
         }
 
+        planning_time += TIME_PER_ATTEMPT;
         attempt += 1;
 
         if (attempt >= PLANNING_ATTEMPTS) {
@@ -314,7 +316,7 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // are time when it does that
     arm_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
     // Maximum 10s per attempt
-    arm_move_group_interface.setPlanningTime(10);
+    arm_move_group_interface.setPlanningTime(TIME_PER_ATTEMPT);
 
     // Same config for gripper
     gripper_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
