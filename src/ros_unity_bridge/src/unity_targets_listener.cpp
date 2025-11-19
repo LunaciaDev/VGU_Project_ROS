@@ -1,5 +1,6 @@
 #include "unity_targets_listener.hpp"
 
+#include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -32,8 +33,11 @@ static const ros::Duration SLEEP_TIMER =
     ros::Duration(1, 500000);  // sleep for 1.5s
 
 // Planning statistic
-static double planning_time = 0;
-static const std::string associated_joint_name[6] = {"arm_elbow_joint", "arm_shoulder_lift_joint", "arm_shoulder_pan_joint", "arm_wrist_1_joint", "arm_wrist_2_joint", "arm_wrist_3_joint"};
+static double            planning_time = 0;
+static const std::string associated_joint_name[6] = {
+    "arm_elbow_joint",   "arm_shoulder_lift_joint", "arm_shoulder_pan_joint",
+    "arm_wrist_1_joint", "arm_wrist_2_joint",       "arm_wrist_3_joint"
+};
 static std::unordered_map<std::string, double> total_joint_trajectory;
 static std::unordered_map<std::string, double> previous_joint_position;
 
@@ -162,7 +166,6 @@ static int planning_with_profiling(
             break;
         }
 
-        planning_time += plan.planning_time_;
         attempt += 1;
 
         if (attempt >= 5) {
@@ -171,12 +174,15 @@ static int planning_with_profiling(
     }
 
     planning_time += plan.planning_time_;
-    const std::vector<std::string> joint_names = plan.trajectory_.joint_trajectory.joint_names;
+    const std::vector<std::string> joint_names =
+        plan.trajectory_.joint_trajectory.joint_names;
 
     for (const auto waypoints : plan.trajectory_.joint_trajectory.points) {
         for (int i = 0; i < 6; i++) {
             const auto joint_name = joint_names[i];
-            total_joint_trajectory[joint_name] += abs(waypoints.positions[i] - previous_joint_position[joint_name]);
+            total_joint_trajectory[joint_name] +=
+                abs(waypoints.positions[i] -
+                    previous_joint_position[joint_name]);
             previous_joint_position[joint_name] = waypoints.positions[i];
         }
     }
@@ -199,6 +205,74 @@ static int planning_no_profiling(MoveGroupInterface& arm_move_group_interface) {
         return -1;
     }
     return 0;
+}
+
+/**
+ * Write the result into log. Back up in case for some reason we cannot open the
+ * csv.
+ */
+static void write_log_result() {
+    ROS_INFO("Total planning time: %.5f", planning_time);
+    for (const auto joint_moved_value : total_joint_trajectory) {
+        ROS_INFO(
+            "%s expected to move %.5f radians", joint_moved_value.first.c_str(),
+            joint_moved_value.second
+        );
+    }
+}
+
+/**
+ * Write the result of movement to a csv.
+ *
+ * If the csv cannot be opened, echo result into the console.
+ */
+static void write_result() {
+    // C-style since that's what I am familiar with
+    FILE* is_handle_exist = fopen("result.csv", "r");
+    FILE* result_file_handle;
+
+    // we did not create the file.
+    if (is_handle_exist == NULL) {
+        result_file_handle = fopen("result.csv", "a");
+
+        if (result_file_handle == NULL) {
+            // write to log
+            write_log_result();
+            return;
+        }
+
+        fprintf(
+            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s\n",
+            associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
+            associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
+            associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
+        );
+    } else {
+        result_file_handle = fopen("result.csv", "a");
+
+        if (result_file_handle == NULL) {
+            // write to log
+            write_log_result();
+            return;
+        }
+    }
+
+    // Write the result
+    fprintf(result_file_handle, "%.6f,", planning_time);
+
+    for (int i = 0; i < 6; i++) {
+        fprintf(
+            result_file_handle, "%.6f",
+            total_joint_trajectory[associated_joint_name[i]]
+        );
+
+        if (i != 5) {
+            fprintf(result_file_handle, ",");
+        }
+    }
+
+    // Flush the result into file
+    fflush(result_file_handle);
 }
 
 /**
@@ -389,13 +463,9 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
             return;
         }
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
 
-    ROS_INFO("Total planning time: %.5f", planning_time);
-    for (const auto joint_moved_value : total_joint_trajectory) {
-        ROS_INFO("%s expected to move %.5f radians", joint_moved_value.first.c_str(), joint_moved_value.second);
-    }
+    // Write result to file
+    write_result();
 }
