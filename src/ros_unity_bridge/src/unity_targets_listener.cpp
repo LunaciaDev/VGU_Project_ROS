@@ -10,7 +10,6 @@
 #include "moveit/utils/moveit_error_code.h"
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
-#include "ros/duration.h"
 #include "ros_unity_messages/UnityObject.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
 
@@ -31,8 +30,6 @@ static const double        TIME_PER_ATTEMPT = 10;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
-static const ros::Duration SLEEP_TIMER =
-    ros::Duration(1, 500000);  // sleep for 1.5s
 
 // Planning statistic
 static double            planning_time = 0;
@@ -352,9 +349,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Pre-grasp pose executed");
 
     // Open the gripper
@@ -371,9 +365,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pick pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Pick pose executed");
 
     // Close the gripper
@@ -399,9 +390,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Pickup pose executed");
 
     // Pre-place Pose
@@ -413,9 +401,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to pre_place pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Pre-place pose executed");
 
     // Place Pose
@@ -427,9 +412,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to place pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Place pose executed");
 
     // Open the gripper
@@ -450,9 +432,6 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
         return;
     }
-    // Sleep a wee bit to be 100% certain that the robot has stabilized.
-    // [FIXME]: Fiddle with the config so these can be removed.
-    SLEEP_TIMER.sleep();
     ROS_INFO("Lift-up pose executed");
 
     // Return gripper to neutral
@@ -472,6 +451,8 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     }
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
+
+    planning_scene_interface.clear();
 
     // Write result to file
     write_result();

@@ -5,10 +5,10 @@ project(ros_unity_bridge)
 add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
-    roscpp
-    ros_unity_messages
-    moveit_ros_planning_interface
-    rviz_visual_tools
+   roscpp
+   ros_unity_messages
+   moveit_ros_planning_interface
+   rviz_visual_tools
 )
 
 # System dependencies are found with CMake's conventions
