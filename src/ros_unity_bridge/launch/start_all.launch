@@ -1,0 +1,6 @@
+<launch>
+    <include file="$(find ros_unity_bridge)/launch/moveit_backend.launch">
+        <arg name="use_rviz" value="false" />
+    </include>
+    <include file="$(find ros_unity_bridge)/launch/unity_bridge.launch" />
+</launch>
