@@ -1,7 +1,9 @@
 .cache/
 .vscode/
+.catkin_tools/
 log/
-build_isolated/
-devel_isolated/
+build/
+devel/
+logs/
 compile_commands.json
 result.csv
