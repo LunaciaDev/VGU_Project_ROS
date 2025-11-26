@@ -53,6 +53,7 @@
   <exec_depend>ros_tcp_endpoint</exec_depend>
   <exec_depend>rviz_visual_tools</exec_depend>
   <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>warehouse_ros_mongo</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
