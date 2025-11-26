@@ -8,10 +8,13 @@
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
+#include "moveit/warehouse/moveit_message_storage.h"
+#include "moveit/warehouse/planning_scene_storage.h"
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros_unity_messages/UnityObject.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
+#include "warehouse_ros/database_connection.h"
 
 // ---
 
@@ -22,6 +25,8 @@ using UnityRequest = ros_unity_messages::UnityRequest;
 using UnityObject = ros_unity_messages::UnityObject;
 using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
 using MoveItStatus = moveit::core::MoveItErrorCode;
+using DbConnectionPtr = warehouse_ros::DatabaseConnection::Ptr;
+using PlanningSceneStorage = moveit_warehouse::PlanningSceneStorage;
 
 // ---
 
@@ -248,7 +253,8 @@ static void write_result() {
         }
 
         fprintf(
-            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
+            result_file_handle,
+            "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
             associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
             associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
             associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
@@ -299,9 +305,20 @@ static void write_result() {
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Received planning request from Unity.");
 
+    const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
+
+    // [FIXME]: Take the parameter from rosparam instead of hardcoded.
+    DB_CONNECTION->setParams("localhost", 1234);
+    if (!DB_CONNECTION->connect()) {
+        ROS_ERROR("Cannot connect to warehouse");
+        return;
+    }
+
     MoveGroupInterface     arm_move_group_interface(ARM_PLANNING_GROUP);
     MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
     PlanningSceneInterface planning_scene_interface;
+    PlanningSceneStorage   planning_scene_storage(DB_CONNECTION);
+
     const moveit_msgs::CollisionObject the_cube =
         generate_cube(message->pick_location);
 

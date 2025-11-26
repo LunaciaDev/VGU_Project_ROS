@@ -50,6 +50,7 @@
   <!--   <doc_depend>doxygen</doc_depend> -->
   <depend>ros_unity_messages</depend>
   <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_ros_warehouse</depend>
   <exec_depend>ros_tcp_endpoint</exec_depend>
   <exec_depend>rviz_visual_tools</exec_depend>
   <buildtool_depend>catkin</buildtool_depend>
