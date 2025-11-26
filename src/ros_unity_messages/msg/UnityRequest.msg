@@ -1,3 +1,4 @@
+std_msgs/String scene_name
 geometry_msgs/Pose pre_pick_location
 geometry_msgs/Pose pre_place_location
 geometry_msgs/Pose pick_location
