@@ -16,7 +16,7 @@ curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo ap
 sudo apt-get update
 
 # Install Base ROS Noetic, ROS dependencies manager, GCC, aliasing `python` to python3, jq to concatenate compile_commands
-sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3 jq
+sudo apt-get install -y ros-noetic-ros-base python3-rosdep g++ python-is-python3 jq python3-catkin-tools mongodb
 
 # Source the environment for ROS
 source /opt/ros/noetic/setup.bash

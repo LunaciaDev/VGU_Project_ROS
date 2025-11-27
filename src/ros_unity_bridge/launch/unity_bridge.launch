@@ -4,6 +4,17 @@
         <param name="tcp_ip" type="string" value="0.0.0.0"/>
         <param name="tcp_port" type="int" value="10000"/>
     </node>
+
+    <!-- Launch the warehouse for path caching -->
+    <param name="warehouse_plugin" value="warehouse_ros_mongo::MongoDatabaseConnection" />
+    <param name="warehouse_port" value="1234" />
+    <param name="warehouse_host" value="localhost" />
+    <node name="$(anon mongo_wrapper_ros)" cwd="ROS_HOME" type="mongo_wrapper_ros.py" pkg="warehouse_ros_mongo">
+        <param name="overwrite" value="false" />
+        <!-- To actually persist data, move this to a persistent location. Putting that in /tmp for testing, for now. -->
+        <param name="db_path" value="/tmp/db" />
+    </node>
+
     <!-- Launch the service -->
     <node name="unity_bridge" pkg="ros_unity_bridge" type="unity_bridge" output="screen"/>
 </launch>

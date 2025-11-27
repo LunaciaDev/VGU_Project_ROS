@@ -8,10 +8,13 @@
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
+#include "moveit/warehouse/moveit_message_storage.h"
+#include "moveit/warehouse/planning_scene_storage.h"
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros_unity_messages/UnityObject.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
+#include "warehouse_ros/database_connection.h"
 
 // ---
 
@@ -22,6 +25,9 @@ using UnityRequest = ros_unity_messages::UnityRequest;
 using UnityObject = ros_unity_messages::UnityObject;
 using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
 using MoveItStatus = moveit::core::MoveItErrorCode;
+using DbConnectionPtr = warehouse_ros::DatabaseConnection::Ptr;
+using PlanningSceneStorage = moveit_warehouse::PlanningSceneStorage;
+using MotionPlanRequest = moveit_msgs::MotionPlanRequest;
 
 // ---
 
@@ -30,6 +36,8 @@ static const double        TIME_PER_ATTEMPT = 10;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
+
+enum PathSection { PrePick, PrePlace, Home, Untracked };
 
 // Planning statistic
 static double            planning_time = 0;
@@ -151,29 +159,22 @@ static moveit_msgs::CollisionObject generate_cube(
 
 /**
  * Adapter for planning and executing a trajectory, with profiling.
+ * This function will NOT write, nor use, motion planning cache.
  *
  * Return 0 on sucessfully executing the trajectory, -1 otherwise.
  */
 static int planning_with_profiling(
-    MoveGroupInterface& arm_move_group_interface
+    MoveGroupInterface&   arm_move_group_interface,
+    PlanningSceneStorage& planning_scene_storage,
+    const std::string&    scene_name,
+    PathSection           section
 ) {
+    ROS_INFO("Using a profiled motion planning adapter");
     Plan plan = Plan();
-    int  attempt = 0;
 
-    while (attempt < PLANNING_ATTEMPTS) {
-        auto status = arm_move_group_interface.plan(plan);
-
-        if (status == MoveItStatus::SUCCESS) {
-            break;
-        }
-
+    while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
         total_attempts += 1;
         failed_attempts += 1;
-        attempt += 1;
-
-        if (attempt >= PLANNING_ATTEMPTS) {
-            return -1;
-        }
     }
 
     total_attempts += 1;
@@ -204,11 +205,116 @@ static int planning_with_profiling(
  *
  * Return 0 on success, and -1 otherwise.
  */
-static int planning_no_profiling(MoveGroupInterface& arm_move_group_interface) {
-    if (arm_move_group_interface.move() != MoveItStatus::SUCCESS) {
-        return -1;
+static int planning_no_profiling(
+    MoveGroupInterface&   arm_move_group_interface,
+    PlanningSceneStorage& planning_scene_storage,
+    const std::string&    scene_name,
+    PathSection           section
+) {
+    ROS_INFO("Using no-profiling planning adapter");
+
+    // Do not try the cache for untracked sections
+    if (section == PathSection::Untracked) {
+        Plan plan = Plan();
+
+        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+            continue;
+        }
+
+        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+            return -1;
+        }
+
+        return 0;
     }
-    return 0;
+
+    std::vector<moveit_warehouse::RobotTrajectoryWithMetadata> plan_results;
+
+    // Do we have any motion plan saved for this request, on this scene?
+    switch (section) {
+        case PrePick:
+            planning_scene_storage.getPlanningResults(
+                plan_results, scene_name, "PrePick"
+            );
+            break;
+        case PrePlace:
+            planning_scene_storage.getPlanningResults(
+                plan_results, scene_name, "PrePlace"
+            );
+            break;
+        case Home:
+            planning_scene_storage.getPlanningResults(
+                plan_results, scene_name, "Home"
+            );
+            break;
+        case Untracked:
+            break;
+    }
+
+    // No plan found.
+    if (plan_results.empty()) {
+        // Create a plan
+        Plan              plan = Plan();
+        MotionPlanRequest plan_request = MotionPlanRequest();
+        arm_move_group_interface.constructMotionPlanRequest(plan_request);
+
+        ROS_INFO("Cannot find a cached motion. Creating a new motion plan.");
+
+        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+            continue;
+        }
+
+        // Execute the plan
+        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+            return -1;
+        }
+
+        // Cache the plan
+        ROS_INFO("Motion plan execution successful. Caching the plan.");
+
+        // Add the query into the db
+        switch (section) {
+            case PrePick:
+                planning_scene_storage.addPlanningQuery(
+                    plan_request, scene_name, "PrePick"
+                );
+                break;
+            case PrePlace:
+                planning_scene_storage.addPlanningQuery(
+                    plan_request, scene_name, "PrePlace"
+                );
+                break;
+            case Home:
+                planning_scene_storage.addPlanningQuery(
+                    plan_request, scene_name, "Home"
+                );
+                break;
+            case Untracked:
+                // Technically this should be a throw?
+                break;
+        }
+
+        planning_scene_storage.addPlanningResult(
+            plan_request, plan.trajectory_, scene_name
+        );
+
+        return 0;
+    } else {
+        ROS_INFO("Found a cached motion plan. Using it instead of planning.");
+        // Use the plan.
+        // [TODO]: The plan may fail due to scene changes. Figure out a way to
+        // update the plan. The failure may happen after the robot moved away
+        // from the starting position is the problem.
+        const moveit_msgs::RobotTrajectory cached_trajectory =
+            *plan_results[0].get();
+
+        if (arm_move_group_interface.execute(cached_trajectory) !=
+            MoveItStatus::SUCCESS) {
+            return -1;
+        }
+
+        return 0;
+    }
 }
 
 /**
@@ -234,8 +340,8 @@ static void write_log_result() {
  */
 static void write_result() {
     // C-style since that's what I am familiar with
-    FILE* is_handle_exist = fopen("result.csv", "r");
-    FILE* result_file_handle;
+    const FILE* is_handle_exist = fopen("result.csv", "r");
+    FILE*       result_file_handle;
 
     // we did not create the file.
     if (is_handle_exist == NULL) {
@@ -248,7 +354,8 @@ static void write_result() {
         }
 
         fprintf(
-            result_file_handle, "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
+            result_file_handle,
+            "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
             associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
             associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
             associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
@@ -299,9 +406,20 @@ static void write_result() {
 void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Received planning request from Unity.");
 
+    const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
+
+    // [FIXME]: Take the parameter from rosparam instead of hardcoded.
+    DB_CONNECTION->setParams("localhost", 1234);
+    if (!DB_CONNECTION->connect()) {
+        ROS_ERROR("Cannot connect to warehouse");
+        return;
+    }
+
     MoveGroupInterface     arm_move_group_interface(ARM_PLANNING_GROUP);
     MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
     PlanningSceneInterface planning_scene_interface;
+    PlanningSceneStorage   planning_scene_storage(DB_CONNECTION);
+
     const moveit_msgs::CollisionObject the_cube =
         generate_cube(message->pick_location);
 
@@ -345,7 +463,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::PrePick
+        ) != 0) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
         return;
     }
@@ -361,7 +482,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pick_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
         ROS_ERROR("Failed to move to pick pose, exiting");
         return;
     }
@@ -386,7 +510,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
         return;
     }
@@ -397,7 +524,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::PrePlace
+        ) != 0) {
         ROS_ERROR("Failed to move to pre_place pose, exiting");
         return;
     }
@@ -408,7 +538,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->place_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
         ROS_ERROR("Failed to move to place pose, exiting");
         return;
     }
@@ -428,7 +561,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     arm_move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
-    if (planning_call(arm_move_group_interface) != 0) {
+    if (planning_call(
+            arm_move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
         return;
     }
@@ -444,7 +580,10 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         std::vector<double> joint_group_position;
         joint_group_position.resize(6, 0);
         arm_move_group_interface.setJointValueTarget(joint_group_position);
-        if (planning_call(arm_move_group_interface) != 0) {
+        if (planning_call(
+                arm_move_group_interface, planning_scene_storage,
+                message->scene_name.data, PathSection::Home
+            ) != 0) {
             ROS_ERROR("Failed to move to all-zero pose, exiting");
             return;
         }

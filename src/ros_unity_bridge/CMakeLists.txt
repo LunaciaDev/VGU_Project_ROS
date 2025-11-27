@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
    roscpp
    ros_unity_messages
    moveit_ros_planning_interface
+   moveit_ros_warehouse
    rviz_visual_tools
 )
 
