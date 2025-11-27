@@ -12,6 +12,11 @@
     <!-- Robot State Publisher -->
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
 
+    <!-- Joint State Publisher -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
+        <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
+    </node>
+
     <!-- Rviz -->
     <include file="$(find robot_moveit)/launch/moveit_rviz.launch" if="$(arg use_rviz)">
         <arg name="rviz_config" value="$(find robot_moveit)/launch/moveit.rviz"/>
@@ -29,14 +34,8 @@
 
         <!-- Trajectory Executor -->
         <include ns="move_group" file="$(find robot_moveit)/launch/trajectory_execution.launch.xml">
-            <arg name="moveit_controller_manager" value="simple"/>
+            <arg name="moveit_controller_manager" value="fake"/>
         </include>
-
-        <!-- Start fake hardware interface -->
-        <node name="ur10e_hardware_interface" pkg="fake_ur10e_control" type="fake_ur10e_control" output="screen" />
-
-        <!-- Load controller managers -->
-        <include file="$(find robot_moveit)/launch/ros_controllers.launch" />
 
         <!-- Start the move_group action server-->
         <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">

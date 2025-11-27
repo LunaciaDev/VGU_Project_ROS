@@ -21,7 +21,6 @@ src
 |  |- onrobot_rg_description
 |  |- ros_tcp_endpoint
 |  |- ur_description
-|- fake_ur10e_control
 |- ros_unity_bridge
 |- ros_unity_messages
 |- ur10e_config
@@ -36,8 +35,6 @@ src
 `dependencies/ros_tcp_endpoint` (Upstream repository [here](https://github.com/Unity-Technologies/ROS-TCP-Endpoint)) package provide the TCP connection between ROS and Unity.
 
 `dependencies/ur_description` (Upstream repository [here](https://github.com/ros-industrial/universal_robot)) package provide the description for the UR10e Robot.
-
-`fake_ur10e_control` package provide a simulated hardware interface for the UR10e.
 
 `ros_unity_bridge` package holds the application and communication code between the simulator in Unity and MoveIt! planner.
 
