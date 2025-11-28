@@ -6,4 +6,4 @@
 	url = https://github.com/ros-industrial/stomp
 [submodule "src/dependencies/stomp_ros"]
 	path = src/dependencies/stomp_ros
-	url = https://github.com/ros-industrial/stomp
+	url = https://github.com/ros-industrial/stomp_ros
