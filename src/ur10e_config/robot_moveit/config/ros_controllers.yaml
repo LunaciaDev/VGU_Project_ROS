@@ -1,5 +1,5 @@
 # Settings for ros_control hardware interface
-hardware_interface:
+ur_hardware_interface:
   joints:
     - arm_shoulder_pan_joint
     - arm_shoulder_lift_joint
@@ -8,11 +8,9 @@ hardware_interface:
     - arm_wrist_2_joint
     - arm_wrist_3_joint
     - gripper_finger_joint
-  sim_control_mode: 0
 # Settings for ros_control control loop
-generic_hw_control_loop:
+hardware_control_loop:
   loop_hz: 500
-  cycle_time_error_threshold: 0.01
 # Publish all joint states ----------------------------------
 # Creates the /joint_states topic necessary in ROS
 joint_state_controller:

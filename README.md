@@ -2,12 +2,16 @@
 
 This repository is part of module 61CSE126 "Project" in Vietnamese-German Univeristy, instructed by Dr.-Ing. Quang Huan Dong ([huan.dq@vgu.edu.vn](mailto:huan.dq@vgu.edu.vn)).
 
-The goal of the project is to design a planning system that take control of the [UR10e](https://www.universal-robots.com/products/ur10e/) robot mounted with the [RG2](https://onrobot.com/en/products/rg2-finger-gripper) gripper in order to execute pick and place tasks in both static and dynamic environment. During development, the robot is simulated in [Unity](https://unity.com/).
+The goal of the project is to design a planning system that take control of the [UR10e](https://www.universal-robots.com/products/ur10e/) robot mounted with the [RG2](https://onrobot.com/en/products/rg2-finger-gripper) gripper in order to execute pick and place tasks in both static and dynamic environment. During development, the robot's environment is simulated in [Unity](https://unity.com/), while the robot itself is simulated by [URSim](https://www.universal-robots.com/download/software-e-series/simulator-non-linux/offline-simulator-e-series-ur-sim-for-non-linux-5126-lts/).
 
 The repositories that are part of the project are listed below:
 
 - ROS: [https://github.com/LunaciaDev/VGU_Project_ROS](https://github.com/LunaciaDev/VGU_Project_ROS)
 - Unity Simulation: [https://github.com/LunaciaDev/VGU_Project_Unity](https://github.com/LunaciaDev/VGU_Project_ROS)
+
+# Warning
+
+While the software can support being connected into an actual robot, please make sure that you have calibrated your robot and regenerated the description based on that calibration! The description used here is *generic* and may causes issues during execution.
 
 # Overview
 
