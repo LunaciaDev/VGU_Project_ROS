@@ -18,7 +18,7 @@ joint_state_controller:
 
 # Taken from https://github.com/UniversalRobots/Universal_Robots_ROS_Driver/blob/master/ur_robot_driver/config/ur10e_controllers.yaml
 robot_arm_controller:
-  type: position_controllers/ScaledJointTrajectoryController
+  type: position_controllers/JointTrajectoryController
   joints:
     - arm_shoulder_pan_joint
     - arm_shoulder_lift_joint
