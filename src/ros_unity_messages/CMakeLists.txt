@@ -51,6 +51,7 @@ add_message_files(
     FILES
     UnityRequest.msg
     UnityObject.msg
+    GripperControl.msg
 )
 
 # Generate services in the 'srv' folder
