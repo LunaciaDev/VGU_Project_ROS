@@ -12,6 +12,8 @@
 #include "moveit/warehouse/planning_scene_storage.h"
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
+#include "ros/duration.h"
+#include "ros_unity_messages/GripperControl.h"
 #include "ros_unity_messages/UnityObject.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
 #include "warehouse_ros/database_connection.h"
@@ -28,14 +30,15 @@ using MoveItStatus = moveit::core::MoveItErrorCode;
 using DbConnectionPtr = warehouse_ros::DatabaseConnection::Ptr;
 using PlanningSceneStorage = moveit_warehouse::PlanningSceneStorage;
 using MotionPlanRequest = moveit_msgs::MotionPlanRequest;
+using GripperControl = ros_unity_messages::GripperControl;
 
 // ---
 
-static const int           PLANNING_ATTEMPTS = 5;
-static const double        TIME_PER_ATTEMPT = 10;
-static const std::string   PLANNING_FRAME = "arm_base_link";
-static const std::string   ARM_PLANNING_GROUP = "robot_arm";
-static const std::string   GRIPPER_PLANNING_GROUP = "robot_gripper";
+static const int         PLANNING_ATTEMPTS = 5;
+static const double      TIME_PER_ATTEMPT = 10;
+static const std::string PLANNING_FRAME = "arm_base_link";
+static const std::string ARM_PLANNING_GROUP = "robot_arm";
+static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
 
 enum PathSection { PrePick, PrePlace, Home, Untracked };
 
@@ -403,7 +406,10 @@ static void write_result() {
  * - Pull the gripper up.
  * - Return the robot to all-zero position.
  */
-void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
+void unity_targets_subs_handler(
+    const UnityRequest::ConstPtr& message,
+    const ros::Publisher          gripper_control_publisher
+) {
     ROS_INFO("Received planning request from Unity.");
 
     const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
@@ -415,10 +421,17 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
         return;
     }
 
-    MoveGroupInterface     arm_move_group_interface(ARM_PLANNING_GROUP);
-    MoveGroupInterface     gripper_move_group_interface(GRIPPER_PLANNING_GROUP);
-    PlanningSceneInterface planning_scene_interface;
-    PlanningSceneStorage   planning_scene_storage(DB_CONNECTION);
+    // Gripper messages
+    GripperControl gripper_open = GripperControl();
+    gripper_open.gripper_angle = -0.20f;
+    GripperControl gripper_close = GripperControl();
+    gripper_close.gripper_angle = 0.32f;
+    GripperControl gripper_neutral = GripperControl();
+    gripper_neutral.gripper_angle = 0.0f;
+
+    MoveGroupInterface                 move_group_interface(ARM_PLANNING_GROUP);
+    PlanningSceneInterface             planning_scene_interface;
+    PlanningSceneStorage               planning_scene_storage(DB_CONNECTION);
 
     const moveit_msgs::CollisionObject the_cube =
         generate_cube(message->pick_location);
@@ -428,30 +441,24 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Allow replanning if scene change, would come in useful in dynamic object
     // scenario?
-    arm_move_group_interface.allowReplanning(true);
+    move_group_interface.allowReplanning(true);
     // Allow replan attempt in case the planner simply didnt find a path, there
     // are time when it does that
-    arm_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
+    move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
     // Maximum 10s per attempt
-    arm_move_group_interface.setPlanningTime(TIME_PER_ATTEMPT);
-
-    // Same config for gripper
-    gripper_move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
-    // Set gripper to always use OMPL
-    gripper_move_group_interface.setPlanningPipelineId("ompl");
+    move_group_interface.setPlanningTime(TIME_PER_ATTEMPT);
 
     // [DEBUG]: check Unity joint control script
     // debug_joint(move_group_interface);
 
     // Set execution mode (With/Without profiling)
     // [TODO]: Expose this as an option
-    auto planning_call = planning_with_profiling;
+    auto planning_call = planning_no_profiling;
     // Initialize maps
     for (const std::string joint_name : associated_joint_name) {
         total_joint_trajectory[joint_name] = 0;
         previous_joint_position[joint_name] = 0;
     }
-    // auto planning_call = planning_pure;
 
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
@@ -460,11 +467,11 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     // Let's start plan and execute!
     // Pre-Grasp pose
     ROS_INFO("Planning and executing pre-grasp pose");
-    arm_move_group_interface.setPoseTarget(
+    move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePick
         ) != 0) {
         ROS_ERROR("Failed to move to pre_grasp pose, exiting");
@@ -472,18 +479,16 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     }
     ROS_INFO("Pre-grasp pose executed");
 
-    // Open the gripper
-    gripper_move_group_interface.setNamedTarget("gripper_open");
-    gripper_move_group_interface.move();
+    // Open gripper
+    gripper_control_publisher.publish(gripper_open);
+    GRIPPER_CONTROL_DELAY.sleep();
     ROS_INFO("Gripper opened");
 
     // Pick pose
     ROS_INFO("Planning and executing pick pose");
-    arm_move_group_interface.setPoseTarget(
-        message->pick_location, "arm_tcp_link"
-    );
+    move_group_interface.setPoseTarget(message->pick_location, "arm_tcp_link");
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
         ROS_ERROR("Failed to move to pick pose, exiting");
@@ -492,26 +497,26 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Pick pose executed");
 
     // Close the gripper
-    gripper_move_group_interface.setNamedTarget("gripper_close");
-    gripper_move_group_interface.move();
+    gripper_control_publisher.publish(gripper_close);
+    GRIPPER_CONTROL_DELAY.sleep();
     ROS_INFO("Gripper closed");
 
     // Add cube to PlanningScene
     planning_scene_interface.applyCollisionObject(the_cube);
     // Attach to arm_tcp_link, specifying safe self-collision with gripper
     // fingers
-    arm_move_group_interface.attachObject(
+    move_group_interface.attachObject(
         "CUBE", "arm_tcp_link",
         {"gripper_right_inner_finger", "gripper_left_inner_finger"}
     );
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
-    arm_move_group_interface.setPoseTarget(
+    move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
         ROS_ERROR("Failed to move to pickup pose, exiting");
@@ -521,11 +526,11 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
-    arm_move_group_interface.setPoseTarget(
+    move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePlace
         ) != 0) {
         ROS_ERROR("Failed to move to pre_place pose, exiting");
@@ -535,11 +540,9 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
 
     // Place Pose
     ROS_INFO("Planning and executing place pose");
-    arm_move_group_interface.setPoseTarget(
-        message->place_location, "arm_tcp_link"
-    );
+    move_group_interface.setPoseTarget(message->place_location, "arm_tcp_link");
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
         ROS_ERROR("Failed to move to place pose, exiting");
@@ -548,21 +551,21 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Place pose executed");
 
     // Open the gripper
-    gripper_move_group_interface.setNamedTarget("gripper_open");
-    gripper_move_group_interface.move();
+    gripper_control_publisher.publish(gripper_open);
+    GRIPPER_CONTROL_DELAY.sleep();
     ROS_INFO("Gripper opened");
 
     // Detach the cube from the arm, and remove the cube from the scene.
-    arm_move_group_interface.detachObject("CUBE");
+    move_group_interface.detachObject("CUBE");
     planning_scene_interface.removeCollisionObjects({"CUBE"});
 
     // Lift-up Pose
     ROS_INFO("Planning and executing lift-up pose");
-    arm_move_group_interface.setPoseTarget(
+    move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
     if (planning_call(
-            arm_move_group_interface, planning_scene_storage,
+            move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
         ROS_ERROR("Failed to move to lift-up pose, exiting");
@@ -571,17 +574,17 @@ void unity_targets_subs_handler(const UnityRequest::ConstPtr& message) {
     ROS_INFO("Lift-up pose executed");
 
     // Return gripper to neutral
-    gripper_move_group_interface.setNamedTarget("gripper_neutral");
-    gripper_move_group_interface.move();
+    gripper_control_publisher.publish(gripper_neutral);
+    GRIPPER_CONTROL_DELAY.sleep();
     ROS_INFO("Gripper returned to neutral state.");
 
     // Return to starting position
     {
         std::vector<double> joint_group_position;
         joint_group_position.resize(6, 0);
-        arm_move_group_interface.setJointValueTarget(joint_group_position);
+        move_group_interface.setJointValueTarget(joint_group_position);
         if (planning_call(
-                arm_move_group_interface, planning_scene_storage,
+                move_group_interface, planning_scene_storage,
                 message->scene_name.data, PathSection::Home
             ) != 0) {
             ROS_ERROR("Failed to move to all-zero pose, exiting");

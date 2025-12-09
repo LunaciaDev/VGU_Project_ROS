@@ -10,9 +10,3 @@ controller_list:
       - arm_wrist_1_joint
       - arm_wrist_2_joint
       - arm_wrist_3_joint
-  - name: robot_gripper_controller
-    action_ns: gripper_cmd
-    type: GripperCommand
-    default: True
-    joints:
-      - gripper_finger_joint
