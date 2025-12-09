@@ -7,7 +7,6 @@ ur_hardware_interface:
     - arm_wrist_1_joint
     - arm_wrist_2_joint
     - arm_wrist_3_joint
-    - gripper_finger_joint
 # Settings for ros_control control loop
 hardware_control_loop:
   loop_hz: 500
@@ -19,7 +18,7 @@ joint_state_controller:
 
 # Taken from https://github.com/UniversalRobots/Universal_Robots_ROS_Driver/blob/master/ur_robot_driver/config/ur10e_controllers.yaml
 robot_arm_controller:
-  type: position_controllers/JointTrajectoryController
+  type: position_controllers/ScaledJointTrajectoryController
   joints:
     - arm_shoulder_pan_joint
     - arm_shoulder_lift_joint
@@ -51,7 +50,3 @@ robot_arm_controller:
   state_publish_rate: 500
   stop_trajectory_duration: 0.5
   action_monitor_rate: 20
-  
-robot_gripper_controller:
-  type: position_controllers/GripperActionController
-  joint: gripper_finger_joint
