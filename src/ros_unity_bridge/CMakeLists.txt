@@ -7,6 +7,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
    roscpp
    ros_unity_messages
+   rtde_echo
    moveit_ros_planning_interface
    moveit_ros_warehouse
    rviz_visual_tools
@@ -27,7 +28,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pickandplace_project
-   CATKIN_DEPENDS ros_unity_messages
+   CATKIN_DEPENDS ros_unity_messages rtde_echo
 #  DEPENDS system_lib
 )
 

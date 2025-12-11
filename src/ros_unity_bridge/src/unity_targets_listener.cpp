@@ -1,5 +1,6 @@
 #include "unity_targets_listener.hpp"
 
+#include <boost/smart_ptr/shared_ptr.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
@@ -13,8 +14,10 @@
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros/duration.h"
+#include "ros/topic.h"
 #include "ros_unity_messages/GripperControl.h"
 #include "ros_unity_messages/UnityObject.h"
+#include "rtde_echo/RtdeData.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
 #include "warehouse_ros/database_connection.h"
 
@@ -39,19 +42,26 @@ static const double        TIME_PER_ATTEMPT = 30;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
+static const std::string   MAIN_PLANNER = "PRM";
+static const std::string   SIDE_PLANNER = "PRM";
 
-enum PathSection { PrePick, PrePlace, Home, Untracked };
+enum PathSection { PrePick = 0, PrePlace = 1, Home = 2, Untracked };
 
 // Planning statistic
-static double            planning_time = 0;
-static int               total_attempts = 0;
-static int               failed_attempts = 0;
+static double            planning_time[3] = {0, 0, 0};
+static int               total_attempts[3] = {0, 0, 0};
+static int               failed_attempts[3] = {0, 0, 0};
+static double            energy_consumed[3] = {0, 0, 0};
+static double            braking_energy[3] = {0, 0, 0};
 static const std::string associated_joint_name[6] = {
     "arm_elbow_joint",   "arm_shoulder_lift_joint", "arm_shoulder_pan_joint",
     "arm_wrist_1_joint", "arm_wrist_2_joint",       "arm_wrist_3_joint"
 };
-static std::unordered_map<std::string, double> total_joint_trajectory;
-static std::unordered_map<std::string, double> previous_joint_position;
+static const char* output_names[3] = {
+    "pre_pick.csv", "pre_place.csv", "home.csv"
+};
+static std::unordered_map<std::string, double> total_joint_trajectory[3];
+static std::unordered_map<std::string, double> previous_joint_position[3];
 
 // ---
 
@@ -206,29 +216,78 @@ static int planning_with_profiling(
     ROS_INFO("Using a profiled motion planning adapter");
     Plan plan = Plan();
 
-    while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-        total_attempts += 1;
-        failed_attempts += 1;
+    // do not profile untracked section
+    if (section == PathSection::Untracked) {
+        Plan plan = Plan();
+
+        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+            continue;
+        }
+
+        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+            return -1;
+        }
+
+        return 0;
     }
 
-    total_attempts += 1;
-    planning_time += plan.planning_time_;
+    while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+        total_attempts[section] += 1;
+        failed_attempts[section] += 1;
+    }
+
+    total_attempts[section] += 1;
+    planning_time[section] += plan.planning_time_;
     const std::vector<std::string> joint_names =
         plan.trajectory_.joint_trajectory.joint_names;
 
     for (const auto waypoints : plan.trajectory_.joint_trajectory.points) {
         for (int i = 0; i < 6; i++) {
             const auto joint_name = joint_names[i];
-            total_joint_trajectory[joint_name] +=
+            total_joint_trajectory[section][joint_name] +=
                 abs(waypoints.positions[i] -
-                    previous_joint_position[joint_name]);
-            previous_joint_position[joint_name] = waypoints.positions[i];
+                    previous_joint_position[section][joint_name]);
+            previous_joint_position[section][joint_name] =
+                waypoints.positions[i];
         }
+    }
+
+    // Grab current power data
+    boost::shared_ptr<const rtde_echo::RtdeData> data =
+        ros::topic::waitForMessage<rtde_echo::RtdeData>(
+            "/unity_bridge/rtde_data"
+        );
+
+    double before_energy, before_brake;
+
+    if (data) {
+        before_brake = data->braking_energy_dissipated;
+        before_energy = data->energy_consumed;
+    } else {
+        ROS_ERROR(
+            "rtde_echo node abnormality or this node is shutting down, cannot "
+            "collect data"
+        );
     }
 
     // execute the plan
     if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
         return -1;
+    }
+
+    data = ros::topic::waitForMessage<rtde_echo::RtdeData>(
+        "/unity_bridge/rtde_data"
+    );
+
+    if (data) {
+        energy_consumed[section] = data->energy_consumed - before_energy;
+        braking_energy[section] =
+            data->braking_energy_dissipated - before_brake;
+    } else {
+        ROS_ERROR(
+            "rtde_echo node abnormality or this node is shutting down, cannot "
+            "collect data"
+        );
     }
 
     return 0;
@@ -355,16 +414,19 @@ static int planning_no_profiling(
  * Write the result into log. Back up in case for some reason we cannot open the
  * csv.
  */
-static void write_log_result() {
-    ROS_INFO("Total planning time: %.5f", planning_time);
-    for (const auto joint_moved_value : total_joint_trajectory) {
+static void write_log_result(int index) {
+    ROS_INFO("Section: %s", output_names[index]);
+    ROS_INFO("Total planning time: %.6f", planning_time[index]);
+    for (const auto joint_moved_value : total_joint_trajectory[index]) {
         ROS_INFO(
-            "%s expected to move %.5f radians", joint_moved_value.first.c_str(),
+            "%s expected to move %.6f radians", joint_moved_value.first.c_str(),
             joint_moved_value.second
         );
     }
-    ROS_INFO("Failed planning attempts: %d", failed_attempts);
-    ROS_INFO("Total attempts: %d", total_attempts);
+    ROS_INFO("Failed planning attempts: %d", failed_attempts[index]);
+    ROS_INFO("Total attempts: %d", total_attempts[index]);
+    ROS_INFO("Power consumed: %.6f", energy_consumed[index]);
+    ROS_INFO("Braking power dissipated: %.6f", braking_energy[index]);
 }
 
 /**
@@ -372,52 +434,69 @@ static void write_log_result() {
  *
  * If the csv cannot be opened, echo result into the console.
  */
-static void write_result() {
+static void write_result(void) {
+    FILE* file_handle;
+    int   index = -1;
     // C-style since that's what I am familiar with
-    const FILE* is_handle_exist = fopen("result.csv", "r");
-    FILE*       result_file_handle;
+    for (const char* filename : output_names) {
+        index++;
+        file_handle = fopen(filename, "r");
 
-    // we did not create the file.
-    if (is_handle_exist == NULL) {
-        result_file_handle = fopen("result.csv", "a");
+        // The file was not initialized
+        if (file_handle == NULL) {
+            file_handle = fopen(filename, "w");
 
-        if (result_file_handle == NULL) {
-            // write to log
-            write_log_result();
-            return;
+            // cannot open this as write for some reason...
+            if (file_handle == NULL) {
+                write_log_result(index);
+                continue;
+            }
+
+            // Write the header
+            fprintf(
+                file_handle,
+                "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_"
+                "attempts,power_consumed,braking_power_dissipated\n",
+                associated_joint_name[0].c_str(),
+                associated_joint_name[1].c_str(),
+                associated_joint_name[2].c_str(),
+                associated_joint_name[3].c_str(),
+                associated_joint_name[4].c_str(),
+                associated_joint_name[5].c_str()
+            );
+        } else {
+            fclose(file_handle);
+            file_handle = fopen(filename, "a");
+
+            if (file_handle == NULL) {
+                write_log_result(index);
+                continue;
+            }
         }
 
-        fprintf(
-            result_file_handle,
-            "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
-            associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
-            associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
-            associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
-        );
-    } else {
-        result_file_handle = fopen("result.csv", "a");
-
-        if (result_file_handle == NULL) {
-            // write to log
-            write_log_result();
-            return;
+        // Write results
+        // planning time
+        fprintf(file_handle, "%.6f,", planning_time[index]);
+        // joint movement
+        for (int joint_index = 0; joint_index < 6; joint_index++) {
+            fprintf(
+                file_handle, "%.6f,",
+                total_joint_trajectory[index]
+                                      [associated_joint_name[joint_index]]
+            );
         }
-    }
-
-    // Write the result
-    fprintf(result_file_handle, "%.6f,", planning_time);
-
-    for (int i = 0; i < 6; i++) {
+        // attempts
         fprintf(
-            result_file_handle, "%.6f,",
-            total_joint_trajectory[associated_joint_name[i]]
+            file_handle, "%d,%d,", failed_attempts[index], total_attempts[index]
         );
+        // power
+        fprintf(
+            file_handle, "%.6f,%.6f\n", energy_consumed[index],
+            braking_energy[index]
+        );
+        // flush and close stream
+        fclose(file_handle);
     }
-
-    fprintf(result_file_handle, "%d,%d\n", failed_attempts, total_attempts);
-
-    // Flush the result into file
-    fflush(result_file_handle);
 }
 
 /**
@@ -486,11 +565,12 @@ void unity_targets_subs_handler(
     // [TODO]: Expose this as an option
     auto planning_call = planning_with_profiling;
     // Initialize maps
-    for (const std::string joint_name : associated_joint_name) {
-        total_joint_trajectory[joint_name] = 0;
-        previous_joint_position[joint_name] = 0;
+    for (int index = 0; index < 3; index++) {
+        for (const std::string joint_name : associated_joint_name) {
+            total_joint_trajectory[index][joint_name] = 0;
+            previous_joint_position[index][joint_name] = 0;
+        }
     }
-
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
     ROS_INFO("Planning Scene updated with static objects.");
@@ -510,6 +590,7 @@ void unity_targets_subs_handler(
     // Let's start plan and execute!
     // Pre-Grasp pose
     ROS_INFO("Planning and executing pre-grasp pose");
+    move_group_interface.setPlannerId(MAIN_PLANNER);
     move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
@@ -529,6 +610,7 @@ void unity_targets_subs_handler(
 
     // Pick pose
     ROS_INFO("Planning and executing pick pose");
+    move_group_interface.setPlannerId(SIDE_PLANNER);
     move_group_interface.setPoseTarget(message->pick_location, "arm_tcp_link");
     if (planning_call(
             move_group_interface, planning_scene_storage,
@@ -555,6 +637,7 @@ void unity_targets_subs_handler(
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
+    move_group_interface.setPlannerId(SIDE_PLANNER);
     move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
@@ -569,6 +652,7 @@ void unity_targets_subs_handler(
 
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
+    move_group_interface.setPlannerId(MAIN_PLANNER);
     move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
@@ -583,6 +667,7 @@ void unity_targets_subs_handler(
 
     // Place Pose
     ROS_INFO("Planning and executing place pose");
+    move_group_interface.setPlannerId(SIDE_PLANNER);
     move_group_interface.setPoseTarget(message->place_location, "arm_tcp_link");
     if (planning_call(
             move_group_interface, planning_scene_storage,
@@ -604,6 +689,7 @@ void unity_targets_subs_handler(
 
     // Lift-up Pose
     ROS_INFO("Planning and executing lift-up pose");
+    move_group_interface.setPlannerId(SIDE_PLANNER);
     move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
@@ -625,6 +711,7 @@ void unity_targets_subs_handler(
     {
         std::vector<double> joint_group_position;
         joint_group_position.resize(6, 0);
+        move_group_interface.setPlannerId(MAIN_PLANNER);
         move_group_interface.setJointValueTarget(joint_group_position);
         if (planning_call(
                 move_group_interface, planning_scene_storage,
