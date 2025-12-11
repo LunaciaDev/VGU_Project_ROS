@@ -1,5 +1,6 @@
 #include <ur_client_library/rtde/data_package.h>
 
+#include <exception>
 #include <memory>
 
 #include "ros/console.h"
@@ -10,7 +11,12 @@
 #include "ur_client_library/comm/pipeline.h"
 #include "ur_client_library/rtde/rtde_client.h"
 
+static const std::vector<std::string> INPUT_RECIPE = {
+    // RTDEClient expect the input_recipe to be non_empty (contrary to docs), so this is something the driver is not using
+    "external_force_torque"
+};
 static const std::vector<std::string> OUTPUT_RECIPE = {
+    // Require PolyscopeX, we have Polyscope 5.x
     "actual_robot_energy_consumed", "actual_robot_braking_energy_dissipated"
 };
 static const std::chrono::milliseconds READ_TIMEOUT{100};
@@ -36,8 +42,9 @@ int                                    main(int argc, char** argv) {
 
     urcl::comm::INotifier            notifier;
     urcl::rtde_interface::RTDEClient client(
-        robot_ip, notifier, OUTPUT_RECIPE, {}
+        robot_ip, notifier, OUTPUT_RECIPE, INPUT_RECIPE, 50
     );
+
     client.init();
     client.start();
 
