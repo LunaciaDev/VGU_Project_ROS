@@ -41,7 +41,7 @@ static const int           PLANNING_ATTEMPTS = 5;
 static const double        TIME_PER_ATTEMPT = 30;
 static const std::string   PLANNING_FRAME = "arm_base_link";
 static const std::string   ARM_PLANNING_GROUP = "robot_arm";
-static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
+static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(0, 500000);
 static const std::string   MAIN_PLANNER = "PRM";
 static const std::string   SIDE_PLANNER = "PRM";
 
@@ -564,13 +564,27 @@ void unity_targets_subs_handler(
     // Set execution mode (With/Without profiling)
     // [TODO]: Expose this as an option
     auto planning_call = planning_with_profiling;
-    // Initialize maps
+
+    // Reset stat counters
     for (int index = 0; index < 3; index++) {
+        // Joint movement
         for (const std::string joint_name : associated_joint_name) {
             total_joint_trajectory[index][joint_name] = 0;
             previous_joint_position[index][joint_name] = 0;
         }
+
+        // Time
+        planning_time[index] = 0;
+        
+        // Attempts
+        total_attempts[index] = 0;
+        failed_attempts[index] = 0;
+
+        // Energy
+        energy_consumed[index] = 0;
+        braking_energy[index] = 0;
     }
+
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
     ROS_INFO("Planning Scene updated with static objects.");
@@ -604,8 +618,8 @@ void unity_targets_subs_handler(
     ROS_INFO("Pre-grasp pose executed");
 
     // Open gripper
-    gripper_control_publisher.publish(gripper_open);
     GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
 
     // Pick pose
@@ -622,8 +636,8 @@ void unity_targets_subs_handler(
     ROS_INFO("Pick pose executed");
 
     // Close the gripper
-    gripper_control_publisher.publish(gripper_close);
     GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_close);
     ROS_INFO("Gripper closed");
 
     // Add cube to PlanningScene
@@ -679,8 +693,8 @@ void unity_targets_subs_handler(
     ROS_INFO("Place pose executed");
 
     // Open the gripper
-    gripper_control_publisher.publish(gripper_open);
     GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
 
     // Detach the cube from the arm, and remove the cube from the scene.
@@ -703,8 +717,8 @@ void unity_targets_subs_handler(
     ROS_INFO("Lift-up pose executed");
 
     // Return gripper to neutral
-    gripper_control_publisher.publish(gripper_neutral);
     GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_neutral);
     ROS_INFO("Gripper returned to neutral state.");
 
     // Return to starting position
