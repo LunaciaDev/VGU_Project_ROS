@@ -35,7 +35,7 @@ using GripperControl = ros_unity_messages::GripperControl;
 // ---
 
 static const int         PLANNING_ATTEMPTS = 5;
-static const double      TIME_PER_ATTEMPT = 10;
+static const double      TIME_PER_ATTEMPT = 30;
 static const std::string PLANNING_FRAME = "arm_base_link";
 static const std::string ARM_PLANNING_GROUP = "robot_arm";
 static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
@@ -453,7 +453,7 @@ void unity_targets_subs_handler(
 
     // Set execution mode (With/Without profiling)
     // [TODO]: Expose this as an option
-    auto planning_call = planning_no_profiling;
+    auto planning_call = planning_with_profiling;
     // Initialize maps
     for (const std::string joint_name : associated_joint_name) {
         total_joint_trajectory[joint_name] = 0;
