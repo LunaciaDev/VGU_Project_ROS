@@ -47,9 +47,7 @@ catkin_package(
 
 include_directories(${catkin_INCLUDE_DIRS})
 add_executable(rtde_echo src/main.cpp)
-add_dependencies(rtde_echo
-  ${catkin_EXPORTED_TARGETS}
-)
+add_dependencies(rtde_echo ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(rtde_echo
    ${catkin_LIBRARIES} ${Boost_LIBRARIES} ur_client_library::urcl
 )
