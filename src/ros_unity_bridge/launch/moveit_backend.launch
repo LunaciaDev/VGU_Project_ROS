@@ -24,6 +24,9 @@
         <arg name="stopped_controllers" value="" />
     </include>
 
+    <!-- RTDE Data publisher -->
+    <node name="rtde_echo" pkg="rtde_echo" type="rtde_echo" output="screen" />
+
     <!-- Rviz -->
     <include file="$(find robot_moveit)/launch/moveit_rviz.launch" if="$(arg use_rviz)">
         <arg name="rviz_config" value="$(find robot_moveit)/launch/moveit.rviz"/>
