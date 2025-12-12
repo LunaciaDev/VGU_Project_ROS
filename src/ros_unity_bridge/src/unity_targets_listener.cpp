@@ -34,10 +34,10 @@ using GripperControl = ros_unity_messages::GripperControl;
 
 // ---
 
-static const int         PLANNING_ATTEMPTS = 5;
-static const double      TIME_PER_ATTEMPT = 30;
-static const std::string PLANNING_FRAME = "arm_base_link";
-static const std::string ARM_PLANNING_GROUP = "robot_arm";
+static const int           PLANNING_ATTEMPTS = 5;
+static const double        TIME_PER_ATTEMPT = 30;
+static const std::string   PLANNING_FRAME = "arm_base_link";
+static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
 
 enum PathSection { PrePick, PrePlace, Home, Untracked };
@@ -64,7 +64,6 @@ static void update_planning_scene(
     const std::vector<UnityObject>& unity_objects,
     PlanningSceneInterface&         planning_scene_interface
 ) {
-    const auto known_ids = planning_scene_interface.getObjects();
     std::vector<moveit_msgs::CollisionObject> scene_objects_list;
 
     // for each object received from Unity
@@ -101,6 +100,38 @@ static void update_planning_scene(
         // Add the message to the list of messages to be sent
         scene_objects_list.push_back(scene_object);
     }
+
+    // Gripper padding
+    shape_msgs::SolidPrimitive gripper_padding;
+    gripper_padding.type = gripper_padding.BOX;
+    gripper_padding.dimensions = {0.05, 0.04, 0.12};
+
+    geometry_msgs::Pose padding_pose;
+    padding_pose.orientation.w = 1;
+    padding_pose.orientation.x = 0;
+    padding_pose.orientation.y = 0;
+    padding_pose.orientation.z = 0;
+    padding_pose.position.x = 0;
+    padding_pose.position.y = -0.01;
+    padding_pose.position.z = 0.01;
+
+    moveit_msgs::CollisionObject left_gripper_padding;
+    moveit_msgs::CollisionObject right_gripper_padding;
+
+    left_gripper_padding.id = "left_gripper_padding";
+    left_gripper_padding.header.frame_id = "gripper_left_inner_finger";
+    left_gripper_padding.operation = left_gripper_padding.ADD;
+    left_gripper_padding.primitives = {gripper_padding};
+    left_gripper_padding.primitive_poses = {padding_pose};
+
+    right_gripper_padding.id = "right_gripper_padding";
+    right_gripper_padding.header.frame_id = "gripper_right_inner_finger";
+    right_gripper_padding.operation = right_gripper_padding.ADD;
+    right_gripper_padding.primitives = {gripper_padding};
+    right_gripper_padding.primitive_poses = {padding_pose};
+
+    scene_objects_list.push_back(left_gripper_padding);
+    scene_objects_list.push_back(right_gripper_padding);
 
     // Apply the object to planning_scene (Blocking until finished!)
     planning_scene_interface.applyCollisionObjects(scene_objects_list);
@@ -463,6 +494,18 @@ void unity_targets_subs_handler(
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
     ROS_INFO("Planning Scene updated with static objects.");
+    
+    // Attach gripper padding
+    move_group_interface.attachObject(
+        "left_gripper_padding", "gripper_left_inner_finger",
+        {"gripper_left_inner_knuckle", "gripper_left_outer_knuckle",
+         "gripper_left_inner_finger"}
+    );
+    move_group_interface.attachObject(
+        "right_gripper_padding", "gripper_right_inner_finger",
+        {"gripper_right_inner_knuckle", "gripper_right_outer_knuckle",
+         "gripper_right_inner_finger"}
+    );
 
     // Let's start plan and execute!
     // Pre-Grasp pose

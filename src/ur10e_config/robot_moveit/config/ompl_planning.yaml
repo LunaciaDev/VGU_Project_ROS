@@ -194,7 +194,7 @@ robot_arm:
     - AITstar
     - ABITstar
     - BITstar
-  longest_valid_segment_fraction: 0.002
+  longest_valid_segment_fraction: 0.004
 robot_gripper:
   planner_configs:
     - AnytimePathShortening
