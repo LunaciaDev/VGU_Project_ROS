@@ -1,10 +1,3 @@
-#include "ros/console.h"
-#include "ros/init.h"
-#include "ros/node_handle.h"
-#include "ros/spinner.h"
-#include "rtde_echo/RtdeData.h"
-
-// Too bad if you dont have glibc and not on unix
 #include <netinet/in.h>
 #include <ros/duration.h>
 #include <sys/poll.h>
@@ -14,6 +7,12 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+#include "ros/console.h"
+#include "ros/init.h"
+#include "ros/node_handle.h"
+#include "ros/spinner.h"
+#include "rtde_echo/RtdeData.h"
 
 // ==============================================
 
@@ -92,17 +91,28 @@ static int8_t send_message(
     const uint32_t            expected_response_len
 ) {
     if (write(sockfd, message->message, message->len) == -1) {
+        ROS_ERROR("Cannot send data");
         return -1;
     }
 
     uint32_t response_len = read(sockfd, receive_buffer, receive_buffer_len);
 
     if (response_len > expected_response_len) {
+        ROS_ERROR("Unexpected response length");
+        for (int i = 0; i < response_len; i++) {
+            printf("0x%02hhX ", receive_buffer[i]);
+        }
+        printf("\n");
         return -2;
     }
 
     for (uint32_t index = 0; index < expected_response_len; index++) {
         if (receive_buffer[index] != expected_response[index]) {
+            ROS_ERROR("Unexpected response");
+            for (int i = 0; i < response_len; i++) {
+                printf("0x%02hhX ", receive_buffer[i]);
+            }
+            printf("\n");
             return -3;
         }
     }
@@ -132,10 +142,27 @@ int main(int argc, char** argv) {
     ros::init(argc, argv, "rtde_echo");
     ros::NodeHandle node_handle;
 
-    std::string     robot_ip;
-    if (!node_handle.getParam("/ur_hardware_interface/robot_ip", robot_ip)) {
+    std::string     robot_ip_str;
+    if (!node_handle.getParam(
+            "/ur_hardware_interface/robot_ip", robot_ip_str
+        )) {
         // fallback to the default IP from ursim
-        robot_ip = "192.168.56.101";
+        robot_ip_str = "192.168.56.101";
+    }
+
+    // We assume that the IP address is somewhat well-formed
+    uint32_t robot_ip = 0;
+    {
+        uint8_t ip1, ip2, ip3, ip4;
+        if (sscanf(
+                robot_ip_str.c_str(), "%hhu.%hhu.%hhu.%hhu", &ip1, &ip2, &ip3,
+                &ip4
+            ) != 4) {
+            ROS_ERROR("Malformed IP address: %s", robot_ip_str.c_str());
+            return -1;
+        }
+
+        robot_ip = (ip1 << 24) + (ip2 << 16) + (ip3 << 8) + ip4;
     }
 
     // 1 thread for the publisher
@@ -149,18 +176,18 @@ int main(int argc, char** argv) {
         );
 
     // [TODO]: make this mess handle error.
-    int sockfd = connect(0x7f000001, 30004);
+    is_big_endien = htonl(1) != 1;
+    int sockfd = connect(robot_ip, 30004);
     if (sockfd == -1) {
         return -1;
     }
-
-    is_big_endien = htonl(1) != 1;
 
     ROS_INFO("Connected to the RTDE interface");
 
     // Communications!
     char receive_buffer[BUFFER_SIZE];
 
+    ROS_INFO("Requesting protocol version 2");
     if (send_message(
             sockfd, &REQUEST_PROTOCOL_VERSION, receive_buffer, BUFFER_SIZE,
             PROTOCOL_VERSION_RESPONSE, PROTOCOL_VERSION_RESPONSE_LENGTH
@@ -168,13 +195,15 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    ROS_INFO("Specifying interested dataset");
     if (send_message(
             sockfd, &CONTROL_PACKAGE_SETUP_OUTPUT, receive_buffer, BUFFER_SIZE,
-            PACKAGE_START_RESPONSE, PACKAGE_START_RESPONSE_LENGTH
+            SETUP_OUTPUT_RESPONSE, SETUP_OUTPUT_RESPONSE_LENGTH
         ) != 0) {
         return -1;
     }
 
+    ROS_INFO("Starting data transfer");
     if (send_message(
             sockfd, &CONTROL_PACKAGE_START, receive_buffer, BUFFER_SIZE,
             PACKAGE_START_RESPONSE, PACKAGE_START_RESPONSE_LENGTH
