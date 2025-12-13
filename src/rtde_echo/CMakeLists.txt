@@ -9,8 +9,6 @@ find_package(catkin REQUIRED COMPONENTS
    message_generation
 )
 
-find_package(ur_client_library REQUIRED)
-
 # System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
 
@@ -49,7 +47,7 @@ include_directories(${catkin_INCLUDE_DIRS})
 add_executable(rtde_echo src/main.cpp)
 add_dependencies(rtde_echo ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(rtde_echo
-   ${catkin_LIBRARIES} ${Boost_LIBRARIES} ur_client_library::urcl
+   ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
 
 #############

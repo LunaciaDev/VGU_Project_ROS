@@ -1,27 +1,132 @@
-#include <ur_client_library/rtde/data_package.h>
-
-#include <exception>
-#include <memory>
-
 #include "ros/console.h"
 #include "ros/init.h"
 #include "ros/node_handle.h"
 #include "ros/spinner.h"
 #include "rtde_echo/RtdeData.h"
-#include "ur_client_library/comm/pipeline.h"
-#include "ur_client_library/rtde/rtde_client.h"
 
-static const std::vector<std::string> INPUT_RECIPE = {
-    // RTDEClient expect the input_recipe to be non_empty (contrary to docs), so this is something the driver is not using
-    "external_force_torque"
-};
-static const std::vector<std::string> OUTPUT_RECIPE = {
-    // Require PolyscopeX, we have Polyscope 5.x
-    "actual_robot_energy_consumed", "actual_robot_braking_energy_dissipated"
-};
-static const std::chrono::milliseconds READ_TIMEOUT{100};
+// Too bad if you dont have glibc and not on unix
+#include <netinet/in.h>
+#include <ros/duration.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
-int                                    main(int argc, char** argv) {
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+// ==============================================
+
+#define CONNECT_ATTEMPTS 3
+#define BUFFER_SIZE 1024
+
+// ==============================================
+
+static bool is_big_endien;
+
+// ==============================================
+
+struct RtdeMessage {
+    char*    message;
+    uint32_t len;
+};
+
+// Pre-cooked messages
+static const RtdeMessage REQUEST_PROTOCOL_VERSION = {
+    .message = (char*)"\x00\x05\x56\x00\x02",
+    .len = 5
+};
+static const RtdeMessage CONTROL_PACKAGE_SETUP_OUTPUT = {
+    .message = (char*)"\x00\x4e\x4f\x40\x3e\x00\x00\x00\x00\x00\x00""actual_robot_energy_consumed,actual_robot_braking_energy_dissipated",
+    .len = 78
+};
+static const RtdeMessage CONTROL_PACKAGE_START = {
+    .message = (char*)"\x00\x03\x53",
+    .len = 3
+};
+
+// Pre-cooked response
+static const char* PROTOCOL_VERSION_RESPONSE = "\x00\x04\x56\x01";
+#define PROTOCOL_VERSION_RESPONSE_LENGTH 4
+static const char* SETUP_OUTPUT_RESPONSE =
+    "\x00\x11\x4f\x01"
+    "DOUBLE,DOUBLE";
+#define SETUP_OUTPUT_RESPONSE_LENGTH 17
+static const char* PACKAGE_START_RESPONSE = "\x00\x04\x53\x01";
+#define PACKAGE_START_RESPONSE_LENGTH 4
+static const char* PACKAGE_HEADER = "\x00\x14\x55\x01";
+#define PACKAGE_HEADER_LENGTH 4
+
+// ==============================================
+
+static int connect(uint32_t ip_addr, uint16_t port) {
+    int                sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in sock_address = {
+        .sin_family = AF_INET,
+        .sin_port = htons(30004),
+        .sin_addr = {.s_addr = htonl(ip_addr)}
+    };
+
+    for (int attempt = 0; attempt < CONNECT_ATTEMPTS; attempt++) {
+        if (connect(sockfd, (sockaddr*)&sock_address, sizeof(sock_address)) ==
+            0) {
+            return sockfd;
+        }
+
+        ROS_WARN("Cannot connect to the robot, retrying after 1 second.");
+        ros::Duration(1, 0).sleep();
+    }
+
+    ROS_ERROR(
+        "Cannot connect to the robot after %d attempts.", CONNECT_ATTEMPTS
+    );
+    return -1;
+}
+
+static int8_t send_message(
+    const uint32_t            sockfd,
+    const struct RtdeMessage* message,
+    char*                     receive_buffer,
+    const uint32_t            receive_buffer_len,
+    const char*               expected_response,
+    const uint32_t            expected_response_len
+) {
+    if (write(sockfd, message->message, message->len) == -1) {
+        return -1;
+    }
+
+    uint32_t response_len = read(sockfd, receive_buffer, receive_buffer_len);
+
+    if (response_len > expected_response_len) {
+        return -2;
+    }
+
+    for (uint32_t index = 0; index < expected_response_len; index++) {
+        if (receive_buffer[index] != expected_response[index]) {
+            return -3;
+        }
+    }
+
+    return 0;
+}
+
+static double ntohll(char* buffer) {
+    double res;
+
+    if (is_big_endien) {
+        uint32_t slots[2];
+        slots[0] = ntohl(*(uint32_t*)(buffer + 4));
+        slots[1] = ntohl(*(uint32_t*)buffer);
+        memcpy(&res, slots, 8);
+    } else {
+        // Do a memcpy to ensure alignment as the buffer may not be aligned
+        memcpy(&res, buffer, 8);
+    }
+
+    return res;
+}
+
+int main(int argc, char** argv) {
     ROS_INFO("Starting rtde_echo node");
 
     ros::init(argc, argv, "rtde_echo");
@@ -38,34 +143,84 @@ int                                    main(int argc, char** argv) {
     spinner.start();
 
     // Register publisher for the data received
-    ros::Publisher rtde_data_publisher = node_handle.advertise<rtde_echo::RtdeData>("/unity_bridge/rtde_data", 0);
+    ros::Publisher rtde_data_publisher =
+        node_handle.advertise<rtde_echo::RtdeData>(
+            "/unity_bridge/rtde_data", 0
+        );
 
-    urcl::comm::INotifier            notifier;
-    urcl::rtde_interface::RTDEClient client(
-        robot_ip, notifier, OUTPUT_RECIPE, INPUT_RECIPE, 50
-    );
+    // [TODO]: make this mess handle error.
+    int sockfd = connect(0x7f000001, 30004);
+    if (sockfd == -1) {
+        return -1;
+    }
 
-    client.init();
-    client.start();
+    is_big_endien = htonl(1) != 1;
+
+    ROS_INFO("Connected to the RTDE interface");
+
+    // Communications!
+    char receive_buffer[BUFFER_SIZE];
+
+    if (send_message(
+            sockfd, &REQUEST_PROTOCOL_VERSION, receive_buffer, BUFFER_SIZE,
+            PROTOCOL_VERSION_RESPONSE, PROTOCOL_VERSION_RESPONSE_LENGTH
+        ) != 0) {
+        return -1;
+    }
+
+    if (send_message(
+            sockfd, &CONTROL_PACKAGE_SETUP_OUTPUT, receive_buffer, BUFFER_SIZE,
+            PACKAGE_START_RESPONSE, PACKAGE_START_RESPONSE_LENGTH
+        ) != 0) {
+        return -1;
+    }
+
+    if (send_message(
+            sockfd, &CONTROL_PACKAGE_START, receive_buffer, BUFFER_SIZE,
+            PACKAGE_START_RESPONSE, PACKAGE_START_RESPONSE_LENGTH
+        ) != 0) {
+        return -1;
+    }
+
+    struct pollfd fds = {
+        .fd = sockfd, .events = POLLIN | POLLERR | POLLHUP | POLLNVAL
+    };
+    rtde_echo::RtdeData data_package;
 
     while (!ros::isShuttingDown()) {
-        std::unique_ptr<urcl::rtde_interface::DataPackage> data_pkg =
-            client.getDataPackage(READ_TIMEOUT);
+        if (poll(&fds, 1, 500) == 1) {
+            switch (fds.revents) {
+                case POLLIN: {
+                    // the fd is ready to be read
+                    uint32_t read_size =
+                        read(sockfd, &receive_buffer, BUFFER_SIZE);
 
-        if (data_pkg) {
-            double energy_consumed, braking_energy;
+                    // Assuming that we can read the full package all the time?
+                    for (int i = 0; i < PACKAGE_HEADER_LENGTH; i++) {
+                        if (PACKAGE_HEADER[i] != receive_buffer[i])
+                            ROS_WARN("Malformed package");
+                        break;
+                    }
 
-            data_pkg->getData<double>(OUTPUT_RECIPE[0], energy_consumed);
-            data_pkg->getData<double>(OUTPUT_RECIPE[1], braking_energy);
+                    // We got a package.
+                    data_package.energy_consumed = ntohll(receive_buffer + 4);
+                    data_package.braking_energy_dissipated =
+                        ntohll(receive_buffer + 12);
 
-            rtde_echo::RtdeData rtde_data;
-            rtde_data.braking_energy_dissipated = braking_energy;
-            rtde_data.energy_consumed = energy_consumed;
-
-            rtde_data_publisher.publish(rtde_data);
+                    rtde_data_publisher.publish(data_package);
+                    break;
+                }
+                case POLLHUP: {
+                    ROS_ERROR("RTDE interface disconnected");
+                    return -1;
+                }
+                default: {
+                    ROS_ERROR("Unhandled error");
+                    return -1;
+                }
+            }
         }
     }
 
-    spinner.stop();
     return 0;
 }
