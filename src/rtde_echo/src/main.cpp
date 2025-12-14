@@ -216,27 +216,21 @@ int main(int argc, char** argv) {
     };
     rtde_echo::RtdeData data_package;
 
+    // Our package always is 20 bytes long
+    uint32_t      read_len;
+    uint32_t      read_ptr;
+    unsigned char unfinished_package[20];
+    uint32_t      unfinished_len = 0;
+
     while (!ros::isShuttingDown()) {
+        read_ptr = 0;
+
+        // Read from file descriptor
         if (poll(&fds, 1, 500) == 1) {
             switch (fds.revents) {
                 case POLLIN: {
                     // the fd is ready to be read
-                    uint32_t read_size =
-                        read(sockfd, &receive_buffer, BUFFER_SIZE);
-
-                    // Assuming that we can read the full package all the time?
-                    for (int i = 0; i < PACKAGE_HEADER_LENGTH; i++) {
-                        if (PACKAGE_HEADER[i] != receive_buffer[i])
-                            ROS_WARN("Malformed package");
-                        break;
-                    }
-
-                    // We got a package.
-                    data_package.energy_consumed = ntohll(receive_buffer + 4);
-                    data_package.braking_energy_dissipated =
-                        ntohll(receive_buffer + 12);
-
-                    rtde_data_publisher.publish(data_package);
+                    read_len = read(sockfd, receive_buffer, BUFFER_SIZE);
                     break;
                 }
                 case POLLHUP: {
@@ -248,6 +242,34 @@ int main(int argc, char** argv) {
                     return -1;
                 }
             }
+        }
+
+        // Process the buffer
+        if (unfinished_len != 0) {
+            // We have unfinished package, memcpy the remaining data over and
+            // process that package
+            memcpy(
+                unfinished_package + unfinished_len, receive_buffer,
+                20 - unfinished_len
+            );
+            process_package(unfinished_package, rtde_data_publisher);
+            read_ptr = 20 - unfinished_len;
+            unfinished_len = 0;
+        }
+
+        uint32_t loop_count = read_len / 20;
+        unfinished_len = read_len % 20;
+
+        for (uint32_t loop = 0; loop < loop_count; loop++) {
+            process_package(receive_buffer + read_ptr, rtde_data_publisher);
+            read_ptr += 20;
+        }
+
+        // memcpy half-received package if exist
+        if (unfinished_len != 0) {
+            memcpy(
+                unfinished_package, receive_buffer + read_ptr, unfinished_len
+            );
         }
     }
 
