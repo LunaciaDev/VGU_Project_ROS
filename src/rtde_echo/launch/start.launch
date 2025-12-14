@@ -1,0 +1,3 @@
+<launch>
+    <node name="rtde_echo" type="rtde_echo" pkg="rtde_echo" output="screen" />
+</launch>

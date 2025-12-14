@@ -1,20 +1,27 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ros_unity_bridge)
+project(rtde_echo)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
    roscpp
-   ros_unity_messages
-   rtde_echo
-   moveit_ros_planning_interface
-   moveit_ros_warehouse
-   rviz_visual_tools
+   message_generation
 )
 
 # System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS system)
+
+###################################
+##            message            ##
+###################################
+
+add_message_files(
+   FILES
+   RtdeData.msg
+)
+
+generate_messages()
 
 ###################################
 ## catkin specific configuration ##
@@ -28,7 +35,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES pickandplace_project
-   CATKIN_DEPENDS ros_unity_messages rtde_echo
+   CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
 )
 
@@ -37,11 +44,9 @@ catkin_package(
 ###########
 
 include_directories(${catkin_INCLUDE_DIRS})
-add_executable(unity_bridge src/main.cpp src/unity_targets_listener.cpp src/joint_debug.cpp)
-add_dependencies(unity_bridge
-  ${catkin_EXPORTED_TARGETS}
-)
-target_link_libraries(unity_bridge
+add_executable(rtde_echo src/main.cpp)
+add_dependencies(rtde_echo ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(rtde_echo
    ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 )
 
@@ -49,5 +54,4 @@ target_link_libraries(unity_bridge
 ## Install ##
 #############
 
-install(TARGETS unity_bridge DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(TARGETS rtde_echo DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

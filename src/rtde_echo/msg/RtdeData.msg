@@ -1,0 +1,2 @@
+float64 energy_consumed
+float64 braking_energy_dissipated
