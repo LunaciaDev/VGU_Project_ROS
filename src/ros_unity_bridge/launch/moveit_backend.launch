@@ -25,7 +25,7 @@
     </include>
 
     <!-- RTDE Data publisher -->
-    <node name="rtde_echo" pkg="rtde_echo" type="rtde_echo" output="screen" />
+    <include file="$(find rtde_echo)/launch/start.launch" />
 
     <!-- Rviz -->
     <include file="$(find robot_moveit)/launch/moveit_rviz.launch" if="$(arg use_rviz)">
