@@ -149,6 +149,22 @@ process_package(unsigned char* buffer, ros::Publisher& data_publisher) {
     data_publisher.publish(data_package);
 }
 
+static uint32_t convert_ip(std::string robot_ip) {
+    uint8_t ip_part[4];
+
+    if (sscanf(
+            robot_ip.c_str(), "%hhu.%hhu.%hhu.%hhu", ip_part, ip_part + 1,
+            ip_part + 2, ip_part + 3
+        ) != 4) {
+        ROS_ERROR("Malformed IP address: %s", robot_ip.c_str());
+        return -1;
+    }
+
+    return ip_part[0] << 24 | ip_part[1] << 16 | ip_part[2] << 8 | ip_part[3];
+}
+
+// ==============================================
+
 int main(int argc, char** argv) {
     ROS_INFO("Starting rtde_echo node");
 
@@ -170,19 +186,8 @@ int main(int argc, char** argv) {
     }
 
     // We assume that the IP address is somewhat well-formed
-    uint32_t robot_ip = 0;
-    {
-        uint8_t ip1, ip2, ip3, ip4;
-        if (sscanf(
-                robot_ip_str.c_str(), "%hhu.%hhu.%hhu.%hhu", &ip1, &ip2, &ip3,
-                &ip4
-            ) != 4) {
-            ROS_ERROR("Malformed IP address: %s", robot_ip_str.c_str());
-            return -1;
-        }
-
-        robot_ip = (ip1 << 24) + (ip2 << 16) + (ip3 << 8) + ip4;
-    }
+    uint32_t robot_ip = convert_ip(robot_ip_str);
+    if (robot_ip == -1) return -1;
 
     // 1 thread for the publisher
     ros::AsyncSpinner spinner(1);
