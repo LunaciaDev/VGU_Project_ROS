@@ -703,6 +703,7 @@ void bridge_request_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Pick pose
     ROS_INFO("Planning and executing pick pose");
@@ -721,6 +722,7 @@ void bridge_request_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_close);
     ROS_INFO("Gripper closed");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Add cube to PlanningScene
     planning_scene_interface.applyCollisionObject(the_cube);
@@ -775,6 +777,7 @@ void bridge_request_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Detach the cube from the arm, and remove the cube from the scene.
     move_group_interface.detachObject("CUBE");
