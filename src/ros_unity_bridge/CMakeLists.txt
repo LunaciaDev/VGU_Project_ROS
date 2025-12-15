@@ -37,7 +37,7 @@ catkin_package(
 ###########
 
 include_directories(${catkin_INCLUDE_DIRS})
-add_executable(unity_bridge src/main.cpp src/unity_targets_listener.cpp src/joint_debug.cpp)
+add_executable(unity_bridge src/main.cpp src/unity_targets_listener.cpp)
 add_dependencies(unity_bridge
   ${catkin_EXPORTED_TARGETS}
 )
