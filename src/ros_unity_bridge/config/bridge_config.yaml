@@ -1,0 +1,12 @@
+unity_bridge:
+  replan_attempt: 5                 # How many time the robot can replan due to environment changes
+  replan_delay: 1.0                 # How long to wait before replanning occur
+  parallel_planners: 4              # How many instance of planner to be run in parallel per attempt
+  planning_timeout: 30              # How many seconds before timing out the planner
+  main_planner_pipeline: ompl       # Pipeline ID for the main paths.
+  main_planner_id: PRM              # ID of the planner used for main paths (prepick, preplace, home). Valid only for OMPL
+  side_planner_pipeline: ompl       # Pipeline ID
+  side_planner_id: PRM              # ID of the planner used for side paths (pick, place, postpick, postplace). Valid only for OMPL
+  use_cached_path: false            # Use warehouse to store previous valid path? Is ignored if profiling is true.
+  profiling: false                  # Generate profiling data? If true, cached path is ignored.
+  generate_pick_place_marker: false # Draw orientation arrow in rviz at prepick, pick, preplace, place location?

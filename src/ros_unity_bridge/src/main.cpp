@@ -14,8 +14,8 @@ int main(int argc, char** argv) {
     // Initialize the node
     ros::init(argc, argv, "unity_bridge");
     ros::NodeHandle node_handle;
+    init_bridge(node_handle);
 
-    // Create 3 threads for the node.
     // 1 thread run the handler for the subscriber on unity_targets topic.
     // 1 thread to call MoveIt Move Group Interface
     // 1 thread to call MoveIt Planning Scene Interface.
@@ -39,7 +39,9 @@ int main(int argc, char** argv) {
             [gripper_control_publisher](
                 const ros_unity_messages::UnityRequest::ConstPtr& message
             ) {
-                unity_targets_subs_handler(message, gripper_control_publisher);
+                bridge_request_handler(
+                    message, gripper_control_publisher
+                );
             }
         );
 

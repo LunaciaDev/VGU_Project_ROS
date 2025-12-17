@@ -1,11 +1,8 @@
 #include "unity_targets_listener.hpp"
 
 #include <boost/smart_ptr/shared_ptr.hpp>
-#include <cstdio>
-#include <cstdlib>
 #include <unordered_map>
 
-#include "joint_debug.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
@@ -14,6 +11,7 @@
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros/duration.h"
+#include "ros/node_handle.h"
 #include "ros/topic.h"
 #include "ros_unity_messages/GripperControl.h"
 #include "ros_unity_messages/UnityObject.h"
@@ -37,15 +35,32 @@ using GripperControl = ros_unity_messages::GripperControl;
 
 // ---
 
-static const int           PLANNING_ATTEMPTS = 5;
-static const double        TIME_PER_ATTEMPT = 30;
 static const std::string   PLANNING_FRAME = "arm_base_link";
-static const std::string   ARM_PLANNING_GROUP = "robot_arm";
 static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(0, 500000);
-static const std::string   MAIN_PLANNER = "PRM";
-static const std::string   SIDE_PLANNER = "PRM";
-
 enum PathSection { PrePick = 0, PrePlace = 1, Home = 2, Untracked };
+struct DatabaseInfo {
+    std::string hostname;
+    int         port;
+};
+
+// ---
+
+static int         parallel_planners;
+static double      plan_timeout;
+static double      replan_delay;
+static int         replan_attempt;
+static std::string main_pipeline;
+static std::string side_pipeline;
+static std::string main_planner;
+static std::string side_planner;
+static int (*planner_adapter)(
+    MoveGroupInterface&,
+    PlanningSceneStorage&,
+    const std::string&,
+    PathSection
+);
+static bool                generate_marker;
+static struct DatabaseInfo db_info;
 
 // Planning statistic
 static double            planning_time[3] = {0, 0, 0};
@@ -201,6 +216,25 @@ static moveit_msgs::CollisionObject generate_cube(
     return scene_object;
 }
 
+static int planning_no_cache(
+    MoveGroupInterface&   move_group_interface,
+    PlanningSceneStorage& planning_scene_storage,
+    const std::string&    scene_name,
+    PathSection           path_section
+) {
+    Plan plan = Plan();
+
+    while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+        continue;
+    }
+
+    if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+        return -1;
+    }
+
+    return 0;
+}
+
 /**
  * Adapter for planning and executing a trajectory, with profiling.
  * This function will NOT write, nor use, motion planning cache.
@@ -208,7 +242,7 @@ static moveit_msgs::CollisionObject generate_cube(
  * Return 0 on sucessfully executing the trajectory, -1 otherwise.
  */
 static int planning_with_profiling(
-    MoveGroupInterface&   arm_move_group_interface,
+    MoveGroupInterface&   move_group_interface,
     PlanningSceneStorage& planning_scene_storage,
     const std::string&    scene_name,
     PathSection           section
@@ -218,20 +252,12 @@ static int planning_with_profiling(
 
     // do not profile untracked section
     if (section == PathSection::Untracked) {
-        Plan plan = Plan();
-
-        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-            continue;
-        }
-
-        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
-            return -1;
-        }
-
-        return 0;
+        return planning_no_cache(
+            move_group_interface, planning_scene_storage, scene_name, section
+        );
     }
 
-    while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+    while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
         total_attempts[section] += 1;
         failed_attempts[section] += 1;
     }
@@ -271,7 +297,7 @@ static int planning_with_profiling(
     }
 
     // execute the plan
-    if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+    if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
         return -1;
     }
 
@@ -299,26 +325,18 @@ static int planning_with_profiling(
  * Return 0 on success, and -1 otherwise.
  */
 static int planning_no_profiling(
-    MoveGroupInterface&   arm_move_group_interface,
+    MoveGroupInterface&   move_group_interface,
     PlanningSceneStorage& planning_scene_storage,
     const std::string&    scene_name,
     PathSection           section
 ) {
-    ROS_INFO("Using no-profiling planning adapter");
+    ROS_INFO("Using cache-based planning adapter");
 
     // Do not try the cache for untracked sections
     if (section == PathSection::Untracked) {
-        Plan plan = Plan();
-
-        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-            continue;
-        }
-
-        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
-            return -1;
-        }
-
-        return 0;
+        return planning_no_cache(
+            move_group_interface, planning_scene_storage, scene_name, section
+        );
     }
 
     std::vector<moveit_warehouse::RobotTrajectoryWithMetadata> plan_results;
@@ -349,16 +367,16 @@ static int planning_no_profiling(
         // Create a plan
         Plan              plan = Plan();
         MotionPlanRequest plan_request = MotionPlanRequest();
-        arm_move_group_interface.constructMotionPlanRequest(plan_request);
+        move_group_interface.constructMotionPlanRequest(plan_request);
 
         ROS_INFO("Cannot find a cached motion. Creating a new motion plan.");
 
-        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+        while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
             continue;
         }
 
         // Execute the plan
-        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+        if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
             return -1;
         }
 
@@ -395,13 +413,13 @@ static int planning_no_profiling(
     } else {
         ROS_INFO("Found a cached motion plan. Using it instead of planning.");
         // Use the plan.
-        // [TODO]: The plan may fail due to scene changes. Figure out a way to
+        // [FIXME]: The plan may fail due to scene changes. Figure out a way to
         // update the plan. The failure may happen after the robot moved away
         // from the starting position is the problem.
         const moveit_msgs::RobotTrajectory cached_trajectory =
             *plan_results[0].get();
 
-        if (arm_move_group_interface.execute(cached_trajectory) !=
+        if (move_group_interface.execute(cached_trajectory) !=
             MoveItStatus::SUCCESS) {
             return -1;
         }
@@ -499,6 +517,74 @@ static void write_result(void) {
     }
 }
 
+void init_bridge(const ros::NodeHandle& node_handle) {
+    node_handle.param("/unity_bridge/parallel_planners", parallel_planners, 4);
+    node_handle.param("/unity_bridge/planning_timeout", plan_timeout, 30.0);
+    node_handle.param("/unity_bridge/replan_attempt", replan_attempt, 5);
+    node_handle.param("/unity_bridge/replan_delay", replan_delay, 1.0);
+
+    node_handle.param(
+        "/unity_bridge/main_planner_pipeline", main_pipeline, std::string("ompl")
+    );
+    if (main_pipeline == "ompl") {
+        node_handle.param(
+            "/unity_bridge/main_planner_id", main_planner, std::string("RRTConnect")
+        );
+    }
+    node_handle.param(
+        "/unity_bridge/side_planner_pipeline", side_pipeline, std::string("ompl")
+    );
+    if (side_pipeline == "ompl") {
+        node_handle.param(
+            "/unity_bridge/side_planner_id", side_planner, std::string("RRTConnect")
+        );
+    }
+
+    bool use_cached_path, profiling;
+    node_handle.param("/unity_bridge/use_cached_path", use_cached_path, false);
+    node_handle.param("/unity_bridge/profiling", profiling, false);
+
+    // Profiling take highest precedence
+    if (profiling) {
+        planner_adapter = planning_with_profiling;
+    }
+    // Then caching
+    else if (use_cached_path) {
+        planner_adapter = planning_no_profiling;
+    } else {
+        planner_adapter = planning_no_cache;
+    }
+
+    node_handle.param("/unity_bridge/generate_pick_place_marker", generate_marker, false);
+
+    node_handle.param("/warehouse_port", db_info.port, 1234);
+    node_handle.param(
+        "/warehouse_host", db_info.hostname, std::string("localhost")
+    );
+}
+
+static void switch_main_planner(MoveGroupInterface& move_group_interface) {
+    move_group_interface.setPlanningPipelineId(main_pipeline);
+    if (!main_planner.empty()) {
+        move_group_interface.setPlannerId(main_planner);
+    } else {
+        move_group_interface.setPlannerId(
+            move_group_interface.getDefaultPlannerId()
+        );
+    }
+}
+
+static void switch_side_planner(MoveGroupInterface& move_group_interface) {
+    move_group_interface.setPlanningPipelineId(side_pipeline);
+    if (!side_pipeline.empty()) {
+        move_group_interface.setPlannerId(side_planner);
+    } else {
+        move_group_interface.setPlannerId(
+            move_group_interface.getDefaultPlannerId()
+        );
+    }
+}
+
 /**
  * Handler for request to execute pick and place from Unity.
  *
@@ -516,16 +602,15 @@ static void write_result(void) {
  * - Pull the gripper up.
  * - Return the robot to all-zero position.
  */
-void unity_targets_subs_handler(
+void bridge_request_handler(
     const UnityRequest::ConstPtr& message,
-    const ros::Publisher          gripper_control_publisher
+    const ros::Publisher&         gripper_control_publisher
 ) {
     ROS_INFO("Received planning request from Unity.");
 
     const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
 
-    // [FIXME]: Take the parameter from rosparam instead of hardcoded.
-    DB_CONNECTION->setParams("localhost", 1234);
+    DB_CONNECTION->setParams(db_info.hostname, db_info.port);
     if (!DB_CONNECTION->connect()) {
         ROS_ERROR("Cannot connect to warehouse");
         return;
@@ -539,31 +624,28 @@ void unity_targets_subs_handler(
     GripperControl gripper_neutral = GripperControl();
     gripper_neutral.gripper_angle = 0.0f;
 
-    MoveGroupInterface                 move_group_interface(ARM_PLANNING_GROUP);
+    MoveGroupInterface                 move_group_interface("robot_arm");
     PlanningSceneInterface             planning_scene_interface;
     PlanningSceneStorage               planning_scene_storage(DB_CONNECTION);
 
     const moveit_msgs::CollisionObject the_cube =
         generate_cube(message->pick_location);
 
-    // [DEBUG]: Show the location of all poses on rviz
-    // generate_markers(message);
+    if (generate_marker) {
+        generate_markers(message);
+    }
 
     // Allow replanning if scene change, would come in useful in dynamic object
     // scenario?
     move_group_interface.allowReplanning(true);
-    // Allow replan attempt in case the planner simply didnt find a path, there
-    // are time when it does that
-    move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
-    // Maximum 10s per attempt
-    move_group_interface.setPlanningTime(TIME_PER_ATTEMPT);
+    // How many replan attempt can the robot try?
+    move_group_interface.setReplanAttempts(replan_attempt);
+    move_group_interface.setReplanDelay(replan_delay);
 
-    // [DEBUG]: check Unity joint control script
-    // debug_joint(move_group_interface);
-
-    // Set execution mode (With/Without profiling)
-    // [TODO]: Expose this as an option
-    auto planning_call = planning_with_profiling;
+    // How many planner instance can we run in parallel?
+    move_group_interface.setNumPlanningAttempts(parallel_planners);
+    // Time waiting before we timeout the planners?
+    move_group_interface.setPlanningTime(plan_timeout);
 
     // Reset stat counters
     for (int index = 0; index < 3; index++) {
@@ -575,7 +657,7 @@ void unity_targets_subs_handler(
 
         // Time
         planning_time[index] = 0;
-        
+
         // Attempts
         total_attempts[index] = 0;
         failed_attempts[index] = 0;
@@ -588,7 +670,7 @@ void unity_targets_subs_handler(
     // Build the planning scene
     update_planning_scene(message->static_objects, planning_scene_interface);
     ROS_INFO("Planning Scene updated with static objects.");
-    
+
     // Attach gripper padding
     move_group_interface.attachObject(
         "left_gripper_padding", "gripper_left_inner_finger",
@@ -604,11 +686,11 @@ void unity_targets_subs_handler(
     // Let's start plan and execute!
     // Pre-Grasp pose
     ROS_INFO("Planning and executing pre-grasp pose");
-    move_group_interface.setPlannerId(MAIN_PLANNER);
+    switch_main_planner(move_group_interface);
     move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (planning_call(
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePick
         ) != 0) {
@@ -621,12 +703,13 @@ void unity_targets_subs_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Pick pose
     ROS_INFO("Planning and executing pick pose");
-    move_group_interface.setPlannerId(SIDE_PLANNER);
+    switch_side_planner(move_group_interface);
     move_group_interface.setPoseTarget(message->pick_location, "arm_tcp_link");
-    if (planning_call(
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
@@ -639,6 +722,7 @@ void unity_targets_subs_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_close);
     ROS_INFO("Gripper closed");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Add cube to PlanningScene
     planning_scene_interface.applyCollisionObject(the_cube);
@@ -651,11 +735,11 @@ void unity_targets_subs_handler(
 
     // Pickup Pose
     ROS_INFO("Planning and executing pickup pose");
-    move_group_interface.setPlannerId(SIDE_PLANNER);
+    switch_side_planner(move_group_interface);
     move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
     );
-    if (planning_call(
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
@@ -666,11 +750,8 @@ void unity_targets_subs_handler(
 
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
-    move_group_interface.setPlannerId(MAIN_PLANNER);
-    move_group_interface.setPoseTarget(
-        message->pre_place_location, "arm_tcp_link"
-    );
-    if (planning_call(
+    switch_main_planner(move_group_interface);
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePlace
         ) != 0) {
@@ -681,9 +762,9 @@ void unity_targets_subs_handler(
 
     // Place Pose
     ROS_INFO("Planning and executing place pose");
-    move_group_interface.setPlannerId(SIDE_PLANNER);
+    switch_side_planner(move_group_interface);
     move_group_interface.setPoseTarget(message->place_location, "arm_tcp_link");
-    if (planning_call(
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
@@ -696,6 +777,7 @@ void unity_targets_subs_handler(
     GRIPPER_CONTROL_DELAY.sleep();
     gripper_control_publisher.publish(gripper_open);
     ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
 
     // Detach the cube from the arm, and remove the cube from the scene.
     move_group_interface.detachObject("CUBE");
@@ -703,11 +785,11 @@ void unity_targets_subs_handler(
 
     // Lift-up Pose
     ROS_INFO("Planning and executing lift-up pose");
-    move_group_interface.setPlannerId(SIDE_PLANNER);
+    switch_side_planner(move_group_interface);
     move_group_interface.setPoseTarget(
         message->pre_place_location, "arm_tcp_link"
     );
-    if (planning_call(
+    if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::Untracked
         ) != 0) {
@@ -725,9 +807,9 @@ void unity_targets_subs_handler(
     {
         std::vector<double> joint_group_position;
         joint_group_position.resize(6, 0);
-        move_group_interface.setPlannerId(MAIN_PLANNER);
+        switch_main_planner(move_group_interface);
         move_group_interface.setJointValueTarget(joint_group_position);
-        if (planning_call(
+        if (planner_adapter(
                 move_group_interface, planning_scene_storage,
                 message->scene_name.data, PathSection::Home
             ) != 0) {

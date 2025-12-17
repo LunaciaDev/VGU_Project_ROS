@@ -16,12 +16,9 @@
 
 // ==============================================
 
-#define CONNECT_ATTEMPTS 3
-#define BUFFER_SIZE 1024
-
-// ==============================================
-
 static bool is_big_endien;
+static int  retry_count;
+static int  buffer_size;
 
 // ==============================================
 
@@ -66,7 +63,7 @@ static int connect(uint32_t ip_addr, uint16_t port) {
         .sin_addr = {.s_addr = htonl(ip_addr)}
     };
 
-    for (int attempt = 0; attempt < CONNECT_ATTEMPTS; attempt++) {
+    for (int attempt = 0; attempt < retry_count; attempt++) {
         if (connect(sockfd, (sockaddr*)&sock_address, sizeof(sock_address)) ==
             0) {
             return sockfd;
@@ -76,16 +73,14 @@ static int connect(uint32_t ip_addr, uint16_t port) {
         ros::Duration(1, 0).sleep();
     }
 
-    ROS_ERROR(
-        "Cannot connect to the robot after %d attempts.", CONNECT_ATTEMPTS
-    );
+    ROS_ERROR("Cannot connect to the robot after %d attempts.", retry_count);
     return -1;
 }
 
 static int8_t send_message(
     const uint32_t            sockfd,
     const struct RtdeMessage* message,
-    char*                     receive_buffer,
+    unsigned char*            receive_buffer,
     const uint32_t            receive_buffer_len,
     const char*               expected_response,
     const uint32_t            expected_response_len
@@ -120,7 +115,8 @@ static int8_t send_message(
     return 0;
 }
 
-static double ntohll(char* buffer) {
+// Assuming that double is implemented using IEEE 754
+static double ntohll(unsigned char* buffer) {
     double res;
 
     if (is_big_endien) {
@@ -136,6 +132,39 @@ static double ntohll(char* buffer) {
     return res;
 }
 
+static void
+process_package(unsigned char* buffer, ros::Publisher& data_publisher) {
+    for (int i = 0; i < PACKAGE_HEADER_LENGTH; i++) {
+        if (PACKAGE_HEADER[i] != buffer[i]) {
+            ROS_WARN("Malformed package received");
+            return;
+        }
+    }
+
+    // We got a package.
+    rtde_echo::RtdeData data_package;
+    data_package.energy_consumed = ntohll(buffer + 4);
+    data_package.braking_energy_dissipated = ntohll(buffer + 12);
+
+    data_publisher.publish(data_package);
+}
+
+static uint32_t convert_ip(std::string robot_ip) {
+    uint8_t ip_part[4];
+
+    if (sscanf(
+            robot_ip.c_str(), "%hhu.%hhu.%hhu.%hhu", ip_part, ip_part + 1,
+            ip_part + 2, ip_part + 3
+        ) != 4) {
+        ROS_ERROR("Malformed IP address: %s", robot_ip.c_str());
+        return -1;
+    }
+
+    return ip_part[0] << 24 | ip_part[1] << 16 | ip_part[2] << 8 | ip_part[3];
+}
+
+// ==============================================
+
 int main(int argc, char** argv) {
     ROS_INFO("Starting rtde_echo node");
 
@@ -149,21 +178,16 @@ int main(int argc, char** argv) {
         // fallback to the default IP from ursim
         robot_ip_str = "192.168.56.101";
     }
+    if (!node_handle.getParam("/rtde_echo/retry_count", retry_count)) {
+        retry_count = 3;
+    }
+    if (!node_handle.getParam("/rtde_echo/buffer_size", buffer_size)) {
+        buffer_size = 1024;
+    }
 
     // We assume that the IP address is somewhat well-formed
-    uint32_t robot_ip = 0;
-    {
-        uint8_t ip1, ip2, ip3, ip4;
-        if (sscanf(
-                robot_ip_str.c_str(), "%hhu.%hhu.%hhu.%hhu", &ip1, &ip2, &ip3,
-                &ip4
-            ) != 4) {
-            ROS_ERROR("Malformed IP address: %s", robot_ip_str.c_str());
-            return -1;
-        }
-
-        robot_ip = (ip1 << 24) + (ip2 << 16) + (ip3 << 8) + ip4;
-    }
+    uint32_t robot_ip = convert_ip(robot_ip_str);
+    if (robot_ip == -1) return -1;
 
     // 1 thread for the publisher
     ros::AsyncSpinner spinner(1);
@@ -185,11 +209,12 @@ int main(int argc, char** argv) {
     ROS_INFO("Connected to the RTDE interface");
 
     // Communications!
-    char receive_buffer[BUFFER_SIZE];
+    unsigned char* receive_buffer =
+        (unsigned char*)malloc(sizeof(unsigned char) * buffer_size);
 
     ROS_INFO("Requesting protocol version 2");
     if (send_message(
-            sockfd, &REQUEST_PROTOCOL_VERSION, receive_buffer, BUFFER_SIZE,
+            sockfd, &REQUEST_PROTOCOL_VERSION, receive_buffer, buffer_size,
             PROTOCOL_VERSION_RESPONSE, PROTOCOL_VERSION_RESPONSE_LENGTH
         ) != 0) {
         return -1;
@@ -197,7 +222,7 @@ int main(int argc, char** argv) {
 
     ROS_INFO("Specifying interested dataset");
     if (send_message(
-            sockfd, &CONTROL_PACKAGE_SETUP_OUTPUT, receive_buffer, BUFFER_SIZE,
+            sockfd, &CONTROL_PACKAGE_SETUP_OUTPUT, receive_buffer, buffer_size,
             SETUP_OUTPUT_RESPONSE, SETUP_OUTPUT_RESPONSE_LENGTH
         ) != 0) {
         return -1;
@@ -205,7 +230,7 @@ int main(int argc, char** argv) {
 
     ROS_INFO("Starting data transfer");
     if (send_message(
-            sockfd, &CONTROL_PACKAGE_START, receive_buffer, BUFFER_SIZE,
+            sockfd, &CONTROL_PACKAGE_START, receive_buffer, buffer_size,
             PACKAGE_START_RESPONSE, PACKAGE_START_RESPONSE_LENGTH
         ) != 0) {
         return -1;
@@ -216,27 +241,21 @@ int main(int argc, char** argv) {
     };
     rtde_echo::RtdeData data_package;
 
+    // Our package always is 20 bytes long
+    uint32_t      read_len;
+    uint32_t      read_ptr;
+    unsigned char unfinished_package[20];
+    uint32_t      unfinished_len = 0;
+
     while (!ros::isShuttingDown()) {
+        read_ptr = 0;
+
+        // Read from file descriptor
         if (poll(&fds, 1, 500) == 1) {
             switch (fds.revents) {
                 case POLLIN: {
                     // the fd is ready to be read
-                    uint32_t read_size =
-                        read(sockfd, &receive_buffer, BUFFER_SIZE);
-
-                    // Assuming that we can read the full package all the time?
-                    for (int i = 0; i < PACKAGE_HEADER_LENGTH; i++) {
-                        if (PACKAGE_HEADER[i] != receive_buffer[i])
-                            ROS_WARN("Malformed package");
-                        break;
-                    }
-
-                    // We got a package.
-                    data_package.energy_consumed = ntohll(receive_buffer + 4);
-                    data_package.braking_energy_dissipated =
-                        ntohll(receive_buffer + 12);
-
-                    rtde_data_publisher.publish(data_package);
+                    read_len = read(sockfd, receive_buffer, buffer_size);
                     break;
                 }
                 case POLLHUP: {
@@ -248,6 +267,34 @@ int main(int argc, char** argv) {
                     return -1;
                 }
             }
+        }
+
+        // Process the buffer
+        if (unfinished_len != 0) {
+            // We have unfinished package, memcpy the remaining data over and
+            // process that package
+            memcpy(
+                unfinished_package + unfinished_len, receive_buffer,
+                20 - unfinished_len
+            );
+            process_package(unfinished_package, rtde_data_publisher);
+            read_ptr = 20 - unfinished_len;
+            unfinished_len = 0;
+        }
+
+        uint32_t loop_count = read_len / 20;
+        unfinished_len = read_len % 20;
+
+        for (uint32_t loop = 0; loop < loop_count; loop++) {
+            process_package(receive_buffer + read_ptr, rtde_data_publisher);
+            read_ptr += 20;
+        }
+
+        // memcpy half-received package if exist
+        if (unfinished_len != 0) {
+            memcpy(
+                unfinished_package, receive_buffer + read_ptr, unfinished_len
+            );
         }
     }
 
