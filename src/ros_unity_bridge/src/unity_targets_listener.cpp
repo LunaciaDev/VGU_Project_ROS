@@ -518,31 +518,31 @@ static void write_result(void) {
 }
 
 void init_bridge(const ros::NodeHandle& node_handle) {
-    node_handle.param("parallel_planners", parallel_planners, 4);
-    node_handle.param("planning_timeout", plan_timeout, 30.0);
-    node_handle.param("replan_attempt", replan_attempt, 5);
-    node_handle.param("replan_delay", replan_delay, 1.0);
+    node_handle.param("/unity_bridge/parallel_planners", parallel_planners, 4);
+    node_handle.param("/unity_bridge/planning_timeout", plan_timeout, 30.0);
+    node_handle.param("/unity_bridge/replan_attempt", replan_attempt, 5);
+    node_handle.param("/unity_bridge/replan_delay", replan_delay, 1.0);
 
     node_handle.param(
-        "main_planner_pipeline", main_pipeline, std::string("ompl")
+        "/unity_bridge/main_planner_pipeline", main_pipeline, std::string("ompl")
     );
     if (main_pipeline == "ompl") {
         node_handle.param(
-            "main_planner_id", main_planner, std::string("RRTConnect")
+            "/unity_bridge/main_planner_id", main_planner, std::string("RRTConnect")
         );
     }
     node_handle.param(
-        "side_planner_pipeline", side_pipeline, std::string("ompl")
+        "/unity_bridge/side_planner_pipeline", side_pipeline, std::string("ompl")
     );
     if (side_pipeline == "ompl") {
         node_handle.param(
-            "side_planner_id", side_planner, std::string("RRTConnect")
+            "/unity_bridge/side_planner_id", side_planner, std::string("RRTConnect")
         );
     }
 
     bool use_cached_path, profiling;
-    node_handle.param("use_cached_path", use_cached_path, false);
-    node_handle.param("profiling", profiling, false);
+    node_handle.param("/unity_bridge/use_cached_path", use_cached_path, false);
+    node_handle.param("/unity_bridge/profiling", profiling, false);
 
     // Profiling take highest precedence
     if (profiling) {
@@ -555,7 +555,7 @@ void init_bridge(const ros::NodeHandle& node_handle) {
         planner_adapter = planning_no_cache;
     }
 
-    node_handle.param("generate_pick_place_marker", generate_marker, false);
+    node_handle.param("/unity_bridge/generate_pick_place_marker", generate_marker, false);
 
     node_handle.param("/warehouse_port", db_info.port, 1234);
     node_handle.param(
