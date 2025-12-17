@@ -7,6 +7,7 @@
     </include>
 
     <rosparam command="load" file="$(find robot_moveit)/config/ros_controllers.yaml" />
+    <rosparam command="load" file="$(find ros_unity_bridge)/config/bridge_config.yaml" />
 
     <!-- Static TF Publisher -->
     <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 0 0 0 world arm_base_link"/>
