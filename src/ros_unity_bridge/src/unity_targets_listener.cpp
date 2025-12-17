@@ -524,17 +524,17 @@ void init_bridge(const ros::NodeHandle& node_handle) {
     node_handle.param("replan_delay", replan_delay, 1.0);
 
     node_handle.param(
-        "main_planner_pipeline", main_pipeline, std::string("OMPL")
+        "main_planner_pipeline", main_pipeline, std::string("ompl")
     );
-    if (main_pipeline == "OMPL") {
+    if (main_pipeline == "ompl") {
         node_handle.param(
             "main_planner_id", main_planner, std::string("RRTConnect")
         );
     }
     node_handle.param(
-        "side_planner_pipeline", side_pipeline, std::string("OMPL")
+        "side_planner_pipeline", side_pipeline, std::string("ompl")
     );
-    if (side_pipeline == "OMPL") {
+    if (side_pipeline == "ompl") {
         node_handle.param(
             "side_planner_id", side_planner, std::string("RRTConnect")
         );
