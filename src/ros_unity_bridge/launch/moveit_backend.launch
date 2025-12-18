@@ -1,5 +1,6 @@
 <launch>  
-    <arg name="use_rviz" default="true" />
+    <arg name="use_rviz" default="false" />
+    <arg name="use_ur_driver" default="true" />
 
     <!-- Load MoveIt configuration (URDF, SRDF and other .yaml configuration files) to the param server -->
     <include file="$(find robot_moveit)/launch/planning_context.launch">
@@ -17,7 +18,7 @@
 
     <!-- UR10e Driver -->
     <!-- It need port 29999, 30001, 30004, 50002 port from local. Do reverse proxy properly. -->
-    <include file="$(find ros_unity_bridge)/launch/ur10e_driver.launch">
+    <include file="$(find ros_unity_bridge)/launch/ur10e_driver.launch" if="$(arg use_ur_driver)">
         <arg name="robot_ip" value="192.168.56.101" />
         <arg name="kinematics_config" value="$(find ur_description)/config/ur10e/default_kinematics.yaml" />
         <arg name="use_tool_communication" value="false" />
@@ -26,7 +27,12 @@
     </include>
 
     <!-- RTDE Data publisher -->
-    <include file="$(find rtde_echo)/launch/start.launch" />
+    <include file="$(find rtde_echo)/launch/start.launch" if="$(arg use_ur_driver)" />
+
+    <!-- Joint State Publisher -->
+    <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" unless="$(arg use_ur_driver)">
+        <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
+    </node>
 
     <!-- Rviz -->
     <include file="$(find robot_moveit)/launch/moveit_rviz.launch" if="$(arg use_rviz)">
@@ -45,7 +51,8 @@
 
         <!-- Trajectory Executor -->
         <include ns="move_group" file="$(find robot_moveit)/launch/trajectory_execution.launch.xml">
-            <arg name="moveit_controller_manager" value="ros_control"/>
+            <arg name="moveit_controller_manager" value="fake" unless="$(arg use_ur_driver)"/>
+            <arg name="moveit_controller_manager" value="ros_control" if="$(arg use_ur_driver)"/>
         </include>
 
         <!-- Start the move_group action server-->

@@ -1,6 +1,10 @@
 <launch>
+    <arg name="use_rviz" default="false" />
+    <arg name="use_ur_driver" default="true" />
+
     <include file="$(find ros_unity_bridge)/launch/moveit_backend.launch">
-        <arg name="use_rviz" value="false" />
+        <arg name="use_rviz" value="$(arg use_rviz)" />
+        <arg name="use_ur_driver" value="$(arg use_ur_driver)" />
     </include>
     <include file="$(find ros_unity_bridge)/launch/unity_bridge.launch" />
 </launch>
