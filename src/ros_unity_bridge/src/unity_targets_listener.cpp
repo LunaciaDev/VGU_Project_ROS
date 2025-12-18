@@ -221,16 +221,7 @@ static int planning_no_cache(
     const std::string&    scene_name,
     PathSection           path_section
 ) {
-    Plan plan = Plan();
-
-    while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-        continue;
-    }
-
-    if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
-        return -1;
-    }
-
+    move_group_interface.move();
     return 0;
 }
 
