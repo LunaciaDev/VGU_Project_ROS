@@ -840,8 +840,6 @@ void bridge_request_handler(
          "gripper_right_inner_finger"}
     );
 
-    return;
-
     bridge_request_handler_internal(
         message, gripper_control_publisher, move_group_interface,
         planning_scene_interface, planning_scene_storage
