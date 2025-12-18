@@ -685,7 +685,7 @@ void bridge_request_handler(
 
     // Let's start plan and execute!
     // Pre-Grasp pose
-    ROS_INFO("Planning and executing pre-grasp pose");
+    ROS_INFO("Planning and executing pre-pick pose");
     switch_main_planner(move_group_interface);
     move_group_interface.setPoseTarget(
         message->pre_pick_location, "arm_tcp_link"
@@ -751,6 +751,7 @@ void bridge_request_handler(
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
     switch_main_planner(move_group_interface);
+    move_group_interface.setPoseTarget(message->pre_place_location, "arm_tcp_link");
     if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePlace
