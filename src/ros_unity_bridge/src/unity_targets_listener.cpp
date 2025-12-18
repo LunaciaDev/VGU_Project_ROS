@@ -1,8 +1,7 @@
-#include "unity_targets_listener.hpp"
-
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <unordered_map>
 
+#include "common.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
@@ -17,6 +16,7 @@
 #include "ros_unity_messages/UnityObject.h"
 #include "rtde_echo/RtdeData.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
+#include "std_msgs/Empty.h"
 #include "warehouse_ros/database_connection.h"
 
 // ---
@@ -35,8 +35,7 @@ using GripperControl = ros_unity_messages::GripperControl;
 
 // ---
 
-static const std::string   PLANNING_FRAME = "arm_base_link";
-static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(0, 500000);
+static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
 enum PathSection { PrePick = 0, PrePlace = 1, Home = 2, Untracked };
 struct DatabaseInfo {
     std::string hostname;
@@ -81,11 +80,43 @@ static std::unordered_map<std::string, double> previous_joint_position[3];
 // ---
 
 /**
+ * Generate the target cube.
+ * This is a workaround for an issue where the target cube cannot exist within
+ * the scene as for the gripper to grip the cube, its finger joint MUST collide
+ * with the cube, which is not allowed by MoveIt.
+ * This work around should be removed once we can handle dynamic objects.
+ * [FIXME]: Remove this after dynamic objects is implemented.
+ * [NOTE]: Once it is implemented, we could attach the cube into the arm
+ * specifying that collision between finger and cube is fine? Then the gripper
+ * can lock into that. Also experiment if that attachment would conflict with
+ * dynamic object code.
+ */
+static moveit_msgs::CollisionObject generate_cube(
+    const geometry_msgs::Pose& location
+) {
+    // The CUBE is located at pick_pose, size 5cm
+    moveit_msgs::CollisionObject scene_object;
+    scene_object.id = "CUBE";
+    scene_object.header.frame_id = PLANNING_FRAME;
+    scene_object.operation = scene_object.ADD;
+
+    shape_msgs::SolidPrimitive primitive;
+    primitive.type = primitive.BOX;
+    primitive.dimensions.resize(3, 0.05);
+    scene_object.primitives.push_back(primitive);
+
+    scene_object.primitive_poses.push_back(location);
+
+    return scene_object;
+}
+
+/**
  * Populate the Planning Scene with objects from Unity.
  * This function is blocking until MoveIt confirms that all object has been
  * added into the Scene.
  */
 static void update_planning_scene(
+    const geometry_msgs::Pose&      cube_location,
     const std::vector<UnityObject>& unity_objects,
     PlanningSceneInterface&         planning_scene_interface
 ) {
@@ -157,6 +188,7 @@ static void update_planning_scene(
 
     scene_objects_list.push_back(left_gripper_padding);
     scene_objects_list.push_back(right_gripper_padding);
+    scene_objects_list.push_back(generate_cube(cube_location));
 
     // Apply the object to planning_scene (Blocking until finished!)
     planning_scene_interface.applyCollisionObjects(scene_objects_list);
@@ -183,37 +215,6 @@ static void generate_markers(const UnityRequest::ConstPtr& message) {
         message->place_location, rviz_visual_tools::YELLOW
     );
     visual_tool->trigger();
-}
-
-/**
- * Generate the target cube.
- * This is a workaround for an issue where the target cube cannot exist within
- * the scene as for the gripper to grip the cube, its finger joint MUST collide
- * with the cube, which is not allowed by MoveIt.
- * This work around should be removed once we can handle dynamic objects.
- * [FIXME]: Remove this after dynamic objects is implemented.
- * [NOTE]: Once it is implemented, we could attach the cube into the arm
- * specifying that collision between finger and cube is fine? Then the gripper
- * can lock into that. Also experiment if that attachment would conflict with
- * dynamic object code.
- */
-static moveit_msgs::CollisionObject generate_cube(
-    const geometry_msgs::Pose& location
-) {
-    // The CUBE is located at pick_pose, size 5cm
-    moveit_msgs::CollisionObject scene_object;
-    scene_object.id = "CUBE";
-    scene_object.header.frame_id = PLANNING_FRAME;
-    scene_object.operation = scene_object.ADD;
-
-    shape_msgs::SolidPrimitive primitive;
-    primitive.type = primitive.BOX;
-    primitive.dimensions.resize(3, 0.05);
-    scene_object.primitives.push_back(primitive);
-
-    scene_object.primitive_poses.push_back(location);
-
-    return scene_object;
 }
 
 static int planning_no_cache(
@@ -524,19 +525,23 @@ void init_bridge(const ros::NodeHandle& node_handle) {
     node_handle.param("/unity_bridge/replan_delay", replan_delay, 1.0);
 
     node_handle.param(
-        "/unity_bridge/main_planner_pipeline", main_pipeline, std::string("ompl")
+        "/unity_bridge/main_planner_pipeline", main_pipeline,
+        std::string("ompl")
     );
     if (main_pipeline == "ompl") {
         node_handle.param(
-            "/unity_bridge/main_planner_id", main_planner, std::string("RRTConnect")
+            "/unity_bridge/main_planner_id", main_planner,
+            std::string("RRTConnect")
         );
     }
     node_handle.param(
-        "/unity_bridge/side_planner_pipeline", side_pipeline, std::string("ompl")
+        "/unity_bridge/side_planner_pipeline", side_pipeline,
+        std::string("ompl")
     );
     if (side_pipeline == "ompl") {
         node_handle.param(
-            "/unity_bridge/side_planner_id", side_planner, std::string("RRTConnect")
+            "/unity_bridge/side_planner_id", side_planner,
+            std::string("RRTConnect")
         );
     }
 
@@ -555,7 +560,9 @@ void init_bridge(const ros::NodeHandle& node_handle) {
         planner_adapter = planning_no_cache;
     }
 
-    node_handle.param("/unity_bridge/generate_pick_place_marker", generate_marker, false);
+    node_handle.param(
+        "/unity_bridge/generate_pick_place_marker", generate_marker, false
+    );
 
     node_handle.param("/warehouse_port", db_info.port, 1234);
     node_handle.param(
@@ -585,37 +592,13 @@ static void switch_side_planner(MoveGroupInterface& move_group_interface) {
     }
 }
 
-/**
- * Handler for request to execute pick and place from Unity.
- *
- * We first build the static objects in the planning scene according to the
- * message, then execute pick and place.
- *
- * The pick and place consist of these step:
- * - Move to top of the target.
- * - Lower the gripper.
- * - Grasp the cube.
- * - Pull the gripper up.
- * - Move to top of where the target needed to be placed.
- * - Lower the gripper.
- * - Release the cube.
- * - Pull the gripper up.
- * - Return the robot to all-zero position.
- */
-void bridge_request_handler(
-    const UnityRequest::ConstPtr& message,
-    const ros::Publisher&         gripper_control_publisher
+static void bridge_request_handler_internal(
+    const UnityRequest::ConstPtr message,
+    const ros::Publisher&        gripper_control_publisher,
+    MoveGroupInterface&          move_group_interface,
+    PlanningSceneInterface&      planning_scene_interface,
+    PlanningSceneStorage&        planning_scene_storage
 ) {
-    ROS_INFO("Received planning request from Unity.");
-
-    const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
-
-    DB_CONNECTION->setParams(db_info.hostname, db_info.port);
-    if (!DB_CONNECTION->connect()) {
-        ROS_ERROR("Cannot connect to warehouse");
-        return;
-    }
-
     // Gripper messages
     GripperControl gripper_open = GripperControl();
     gripper_open.gripper_angle = -0.20f;
@@ -623,65 +606,6 @@ void bridge_request_handler(
     gripper_close.gripper_angle = 0.32f;
     GripperControl gripper_neutral = GripperControl();
     gripper_neutral.gripper_angle = 0.0f;
-
-    MoveGroupInterface                 move_group_interface("robot_arm");
-    PlanningSceneInterface             planning_scene_interface;
-    PlanningSceneStorage               planning_scene_storage(DB_CONNECTION);
-
-    const moveit_msgs::CollisionObject the_cube =
-        generate_cube(message->pick_location);
-
-    if (generate_marker) {
-        generate_markers(message);
-    }
-
-    // Allow replanning if scene change, would come in useful in dynamic object
-    // scenario?
-    move_group_interface.allowReplanning(true);
-    // How many replan attempt can the robot try?
-    move_group_interface.setReplanAttempts(replan_attempt);
-    move_group_interface.setReplanDelay(replan_delay);
-
-    // How many planner instance can we run in parallel?
-    move_group_interface.setNumPlanningAttempts(parallel_planners);
-    // Time waiting before we timeout the planners?
-    move_group_interface.setPlanningTime(plan_timeout);
-
-    // Reset stat counters
-    for (int index = 0; index < 3; index++) {
-        // Joint movement
-        for (const std::string joint_name : associated_joint_name) {
-            total_joint_trajectory[index][joint_name] = 0;
-            previous_joint_position[index][joint_name] = 0;
-        }
-
-        // Time
-        planning_time[index] = 0;
-
-        // Attempts
-        total_attempts[index] = 0;
-        failed_attempts[index] = 0;
-
-        // Energy
-        energy_consumed[index] = 0;
-        braking_energy[index] = 0;
-    }
-
-    // Build the planning scene
-    update_planning_scene(message->static_objects, planning_scene_interface);
-    ROS_INFO("Planning Scene updated with static objects.");
-
-    // Attach gripper padding
-    move_group_interface.attachObject(
-        "left_gripper_padding", "gripper_left_inner_finger",
-        {"gripper_left_inner_knuckle", "gripper_left_outer_knuckle",
-         "gripper_left_inner_finger"}
-    );
-    move_group_interface.attachObject(
-        "right_gripper_padding", "gripper_right_inner_finger",
-        {"gripper_right_inner_knuckle", "gripper_right_outer_knuckle",
-         "gripper_right_inner_finger"}
-    );
 
     // Let's start plan and execute!
     // Pre-Grasp pose
@@ -724,10 +648,7 @@ void bridge_request_handler(
     ROS_INFO("Gripper closed");
     GRIPPER_CONTROL_DELAY.sleep();
 
-    // Add cube to PlanningScene
-    planning_scene_interface.applyCollisionObject(the_cube);
-    // Attach to arm_tcp_link, specifying safe self-collision with gripper
-    // fingers
+    // Attach to arm_tcp_link; safe self-collision with gripper fingers
     move_group_interface.attachObject(
         "CUBE", "arm_tcp_link",
         {"gripper_right_inner_finger", "gripper_left_inner_finger"}
@@ -751,7 +672,9 @@ void bridge_request_handler(
     // Pre-place Pose
     ROS_INFO("Planning and executing pre-place pose");
     switch_main_planner(move_group_interface);
-    move_group_interface.setPoseTarget(message->pre_place_location, "arm_tcp_link");
+    move_group_interface.setPoseTarget(
+        message->pre_place_location, "arm_tcp_link"
+    );
     if (planner_adapter(
             move_group_interface, planning_scene_storage,
             message->scene_name.data, PathSection::PrePlace
@@ -821,8 +744,107 @@ void bridge_request_handler(
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
 
-    planning_scene_interface.clear();
-
     // Write result to file
     write_result();
+}
+
+/**
+ * Handler for request to execute pick and place from Unity.
+ *
+ * We first build the static objects in the planning scene according to the
+ * message, then execute pick and place.
+ *
+ * The pick and place consist of these step:
+ * - Move to top of the target.
+ * - Lower the gripper.
+ * - Grasp the cube.
+ * - Pull the gripper up.
+ * - Move to top of where the target needed to be placed.
+ * - Lower the gripper.
+ * - Release the cube.
+ * - Pull the gripper up.
+ * - Return the robot to all-zero position.
+ */
+void bridge_request_handler(
+    const UnityRequest::ConstPtr message,
+    const ros::Publisher&        gripper_control_publisher,
+    const ros::Publisher&        dyn_object_sync
+) {
+    ROS_INFO("Received planning request from Unity.");
+
+    const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
+
+    DB_CONNECTION->setParams(db_info.hostname, db_info.port);
+    if (!DB_CONNECTION->connect()) {
+        ROS_ERROR("Cannot connect to warehouse");
+        return;
+    }
+
+    MoveGroupInterface     move_group_interface("robot_arm");
+    PlanningSceneInterface planning_scene_interface;
+    PlanningSceneStorage   planning_scene_storage(DB_CONNECTION);
+
+    if (generate_marker) {
+        generate_markers(message);
+    }
+
+    // Allow replanning if scene change, would come in useful in dynamic object
+    // scenario?
+    move_group_interface.allowReplanning(true);
+    // How many replan attempt can the robot try?
+    move_group_interface.setReplanAttempts(replan_attempt);
+    move_group_interface.setReplanDelay(replan_delay);
+
+    // How many planner instance can we run in parallel?
+    move_group_interface.setNumPlanningAttempts(parallel_planners);
+    // Time waiting before we timeout the planners?
+    move_group_interface.setPlanningTime(plan_timeout);
+
+    // Reset stat counters
+    for (int index = 0; index < 3; index++) {
+        // Joint movement
+        for (const std::string joint_name : associated_joint_name) {
+            total_joint_trajectory[index][joint_name] = 0;
+            previous_joint_position[index][joint_name] = 0;
+        }
+
+        // Time
+        planning_time[index] = 0;
+
+        // Attempts
+        total_attempts[index] = 0;
+        failed_attempts[index] = 0;
+
+        // Energy
+        energy_consumed[index] = 0;
+        braking_energy[index] = 0;
+    }
+
+    // Build the planning scene
+    update_planning_scene(
+        message->pick_location, message->initial_objects,
+        planning_scene_interface
+    );
+    dyn_object_sync.publish(std_msgs::Empty());
+    ROS_INFO("Planning Scene updated with static objects.");
+
+    // Attach gripper padding
+    move_group_interface.attachObject(
+        "left_gripper_padding", "gripper_left_inner_finger",
+        {"gripper_left_inner_knuckle", "gripper_left_outer_knuckle",
+         "gripper_left_inner_finger"}
+    );
+    move_group_interface.attachObject(
+        "right_gripper_padding", "gripper_right_inner_finger",
+        {"gripper_right_inner_knuckle", "gripper_right_outer_knuckle",
+         "gripper_right_inner_finger"}
+    );
+
+    bridge_request_handler_internal(
+        message, gripper_control_publisher, move_group_interface,
+        planning_scene_interface, planning_scene_storage
+    );
+
+    dyn_object_sync.publish(std_msgs::Empty());
+    planning_scene_interface.clear();
 }
