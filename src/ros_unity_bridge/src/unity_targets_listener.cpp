@@ -148,10 +148,8 @@ static void update_planning_scene(
         // define the pose
         // PLANNING_FRAME is positioned at (0,0,0) for both side so no
         // transformation needed
-        geometry_msgs::Pose primitive_pose;
-        primitive_pose.orientation = object.orientation;
-        primitive_pose.position = object.position;
-        scene_object.primitive_poses.push_back(primitive_pose);
+        scene_object.pose.orientation = object.orientation;
+        scene_object.pose.position = object.position;
 
         // Add the message to the list of messages to be sent
         scene_objects_list.push_back(scene_object);
@@ -825,7 +823,9 @@ void bridge_request_handler(
         message->pick_location, message->initial_objects,
         planning_scene_interface
     );
-    dyn_object_sync.publish(std_msgs::Empty());
+
+    std_msgs::Empty empty_msg;
+    dyn_object_sync.publish(empty_msg);
     ROS_INFO("Planning Scene updated with static objects.");
 
     // Attach gripper padding
@@ -840,11 +840,13 @@ void bridge_request_handler(
          "gripper_right_inner_finger"}
     );
 
+    return;
+
     bridge_request_handler_internal(
         message, gripper_control_publisher, move_group_interface,
         planning_scene_interface, planning_scene_storage
     );
 
-    dyn_object_sync.publish(std_msgs::Empty());
+    dyn_object_sync.publish(empty_msg);
     planning_scene_interface.clear();
 }

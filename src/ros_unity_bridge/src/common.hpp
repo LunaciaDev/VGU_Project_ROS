@@ -8,7 +8,7 @@
 
 // ---
 
-const std::string   PLANNING_FRAME = "arm_base_link";
+const std::string PLANNING_FRAME = "arm_base_link";
 
 // ---
 
@@ -19,7 +19,8 @@ void bridge_request_handler(
 );
 
 void dyn_object_handler(
-    const ros_unity_messages::UnityDynamicObjects::ConstPtr message
+    const ros_unity_messages::UnityDynamicObjects::ConstPtr message,
+    const ros::Publisher&                                   send_objects
 );
 
 void init_bridge(const ros::NodeHandle& node_handle);
