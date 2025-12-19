@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
     // Register publisher for the data received
     ros::Publisher rtde_data_publisher =
         node_handle.advertise<rtde_echo::RtdeData>(
-            "/unity_bridge/rtde_data", 0
+            "/unity_bridge/rtde_data", 1
         );
 
     // [TODO]: make this mess handle error.
