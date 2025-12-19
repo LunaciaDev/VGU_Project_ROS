@@ -221,7 +221,8 @@ static int planning_no_cache(
     const std::string&    scene_name,
     PathSection           path_section
 ) {
-    move_group_interface.move();
+    while (move_group_interface.move() != MoveItStatus::SUCCESS);
+
     return 0;
 }
 
