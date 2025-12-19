@@ -712,8 +712,9 @@ static void bridge_request_handler_internal(
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
 
-    // Write result to file
-    write_result();
+    if (planner_adapter == planning_with_profiling) {
+        write_result();
+    }
 }
 
 /**
