@@ -1,0 +1,4 @@
+rtde_echo:
+  retry_count: 3 # How many connection attempt should be done before declaring no connection?
+  buffer_size: 1024 # How many byte do we receive at once?
+  # Transfer rate is hard-coded as 30Hz

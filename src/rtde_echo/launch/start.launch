@@ -1,0 +1,4 @@
+<launch>
+    <rosparam command="load" file="$(find rtde_echo)/config/rtde_echo.yaml" />
+    <node name="rtde_echo" type="rtde_echo" pkg="rtde_echo" output="screen" />
+</launch>

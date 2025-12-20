@@ -3,4 +3,4 @@ geometry_msgs/Pose pre_pick_location
 geometry_msgs/Pose pre_place_location
 geometry_msgs/Pose pick_location
 geometry_msgs/Pose place_location
-UnityObject[] static_objects
+UnityObject[] initial_objects

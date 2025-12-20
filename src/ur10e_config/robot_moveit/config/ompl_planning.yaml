@@ -61,15 +61,15 @@ planner_configs:
     type: geometric::PRMstar
   FMT:
     type: geometric::FMT
-    num_samples: 1000  # number of states that the planner should sample. default: 1000
-    radius_multiplier: 1.1  # multiplier used for the nearest neighbors search radius. default: 1.1
+    num_samples: 4000  # number of states that the planner should sample. default: 1000
+    radius_multiplier: 1.0  # multiplier used for the nearest neighbors search radius. default: 1.1
     nearest_k: 1  # use Knearest strategy. default: 1
     cache_cc: 1  # use collision checking cache. default: 1
-    heuristics: 0  # activate cost to go heuristics. default: 0
+    heuristics: 1  # activate cost to go heuristics. default: 0
     extended_fmt: 1  # activate the extended FMT*: adding new samples if planner does not finish successfully. default: 1
   BFMT:
     type: geometric::BFMT
-    num_samples: 1000  # number of states that the planner should sample. default: 1000
+    num_samples: 4000  # number of states that the planner should sample. default: 1000
     radius_multiplier: 1.0  # multiplier used for the nearest neighbors search radius. default: 1.0
     nearest_k: 1  # use the Knearest strategy. default: 1
     balanced: 0  # exploration strategy: balanced true expands one tree every iteration. False will select the tree with lowest maximum cost to go. default: 1
@@ -165,6 +165,7 @@ planner_configs:
     use_strict_queue_ordering: 0  # sort edges in the queue at the end of the batch (0) or after each rewiring (1). Default: 0
     find_approximate_solutions: 0  # track approximate solutions (1) or not (0). Default: 0
 robot_arm:
+  default_planner_config: PRM
   planner_configs:
     - AnytimePathShortening
     - SBL
@@ -193,6 +194,7 @@ robot_arm:
     - AITstar
     - ABITstar
     - BITstar
+  longest_valid_segment_fraction: 0.003
 robot_gripper:
   planner_configs:
     - AnytimePathShortening

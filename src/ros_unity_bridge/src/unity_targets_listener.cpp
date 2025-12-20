@@ -1,10 +1,6 @@
-#include "unity_targets_listener.hpp"
-
-#include <cstdio>
-#include <cstdlib>
 #include <unordered_map>
 
-#include "joint_debug.hpp"
+#include "common.hpp"
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "moveit/planning_scene_interface/planning_scene_interface.h"
 #include "moveit/utils/moveit_error_code.h"
@@ -13,9 +9,11 @@
 #include "moveit_msgs/CollisionObject.h"
 #include "ros/console.h"
 #include "ros/duration.h"
+#include "ros/node_handle.h"
 #include "ros_unity_messages/GripperControl.h"
 #include "ros_unity_messages/UnityObject.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
+#include "std_msgs/Empty.h"
 #include "warehouse_ros/database_connection.h"
 
 // ---
@@ -34,100 +32,50 @@ using GripperControl = ros_unity_messages::GripperControl;
 
 // ---
 
-static const int         PLANNING_ATTEMPTS = 5;
-static const double      TIME_PER_ATTEMPT = 10;
-static const std::string PLANNING_FRAME = "arm_base_link";
-static const std::string ARM_PLANNING_GROUP = "robot_arm";
 static const ros::Duration GRIPPER_CONTROL_DELAY = ros::Duration(1, 0);
+enum PathSection { PrePick = 0, PrePlace = 1, Home = 2, Untracked };
+struct DatabaseInfo {
+    std::string hostname;
+    int         port;
+};
 
-enum PathSection { PrePick, PrePlace, Home, Untracked };
+// ---
+
+static int         parallel_planners;
+static double      plan_timeout;
+static double      replan_delay;
+static int         replan_attempt;
+static bool        use_energy_estimation;
+static std::string main_pipeline;
+static std::string side_pipeline;
+static std::string main_planner;
+static std::string side_planner;
+static int (*planner_adapter)(
+    MoveGroupInterface&,
+    PlanningSceneStorage&,
+    const std::string&,
+    PathSection
+);
+static bool                generate_marker;
+static struct DatabaseInfo db_info;
 
 // Planning statistic
-static double            planning_time = 0;
-static int               total_attempts = 0;
-static int               failed_attempts = 0;
+static double            planning_time[3] = {0, 0, 0};
+static int               total_attempts[3] = {0, 0, 0};
+static int               failed_attempts[3] = {0, 0, 0};
+static double            energy_consumed[3] = {0, 0, 0};
+static double            braking_energy[3] = {0, 0, 0};
 static const std::string associated_joint_name[6] = {
     "arm_elbow_joint",   "arm_shoulder_lift_joint", "arm_shoulder_pan_joint",
     "arm_wrist_1_joint", "arm_wrist_2_joint",       "arm_wrist_3_joint"
 };
-static std::unordered_map<std::string, double> total_joint_trajectory;
-static std::unordered_map<std::string, double> previous_joint_position;
+static const char* output_names[3] = {
+    "pre_pick.csv", "pre_place.csv", "home.csv"
+};
+static std::unordered_map<std::string, double> total_joint_trajectory[3];
+static std::unordered_map<std::string, double> previous_joint_position[3];
 
 // ---
-
-/**
- * Populate the Planning Scene with objects from Unity.
- * This function is blocking until MoveIt confirms that all object has been
- * added into the Scene.
- */
-static void update_planning_scene(
-    const std::vector<UnityObject>& unity_objects,
-    PlanningSceneInterface&         planning_scene_interface
-) {
-    const auto known_ids = planning_scene_interface.getObjects();
-    std::vector<moveit_msgs::CollisionObject> scene_objects_list;
-
-    // for each object received from Unity
-    for (const UnityObject object : unity_objects) {
-        // create a corresponding MoveIt Message
-        moveit_msgs::CollisionObject scene_object;
-        scene_object.id = object.id.data;
-        scene_object.header.frame_id = PLANNING_FRAME;
-        scene_object.operation = scene_object.ADD;
-
-        shape_msgs::SolidPrimitive primitive;
-        primitive.type = primitive.BOX;
-        primitive.dimensions.resize(3);
-
-        // During the conversion to ROS coordinate space, the y value is
-        // inverted.
-
-        // z in Unity
-        primitive.dimensions[primitive.BOX_X] = object.scale.x;
-        // -x in Unity, notice the negative
-        primitive.dimensions[primitive.BOX_Y] = -object.scale.y;
-        // y in Unity
-        primitive.dimensions[primitive.BOX_Z] = object.scale.z;
-        scene_object.primitives.push_back(primitive);
-
-        // define the pose
-        // PLANNING_FRAME is positioned at (0,0,0) for both side so no
-        // transformation needed
-        geometry_msgs::Pose primitive_pose;
-        primitive_pose.orientation = object.orientation;
-        primitive_pose.position = object.position;
-        scene_object.primitive_poses.push_back(primitive_pose);
-
-        // Add the message to the list of messages to be sent
-        scene_objects_list.push_back(scene_object);
-    }
-
-    // Apply the object to planning_scene (Blocking until finished!)
-    planning_scene_interface.applyCollisionObjects(scene_objects_list);
-}
-
-/**
- * Draw an arrow at each location sent from Unity on RViz.
- */
-static void generate_markers(const UnityRequest::ConstPtr& message) {
-    auto visual_tool = new rviz_visual_tools::RvizVisualTools(
-        "arm_base_link", "/rviz_visual_markers"
-    );
-    visual_tool->deleteAllMarkers();
-
-    // For each pose, create an arrow for it.
-    visual_tool->publishArrow(
-        message->pre_pick_location, rviz_visual_tools::RED
-    );
-    visual_tool->publishArrow(message->pick_location, rviz_visual_tools::GREEN);
-    visual_tool->publishArrow(
-        message->pre_place_location, rviz_visual_tools::BLUE
-    );
-    visual_tool->publishArrow(
-        message->place_location, rviz_visual_tools::YELLOW
-    );
-    visual_tool->trigger();
-}
 
 /**
  * Generate the target cube.
@@ -161,13 +109,129 @@ static moveit_msgs::CollisionObject generate_cube(
 }
 
 /**
+ * Populate the Planning Scene with objects from Unity.
+ * This function is blocking until MoveIt confirms that all object has been
+ * added into the Scene.
+ */
+static void update_planning_scene(
+    const geometry_msgs::Pose&      cube_location,
+    const std::vector<UnityObject>& unity_objects,
+    PlanningSceneInterface&         planning_scene_interface
+) {
+    std::vector<moveit_msgs::CollisionObject> scene_objects_list;
+
+    // for each object received from Unity
+    for (const UnityObject object : unity_objects) {
+        // create a corresponding MoveIt Message
+        moveit_msgs::CollisionObject scene_object;
+        scene_object.id = object.id.data;
+        scene_object.header.frame_id = PLANNING_FRAME;
+        scene_object.operation = scene_object.ADD;
+
+        shape_msgs::SolidPrimitive primitive;
+        primitive.type = primitive.BOX;
+        primitive.dimensions.resize(3);
+
+        // During the conversion to ROS coordinate space, the y value is
+        // inverted.
+
+        // z in Unity
+        primitive.dimensions[primitive.BOX_X] = object.scale.x;
+        // -x in Unity, notice the negative
+        primitive.dimensions[primitive.BOX_Y] = -object.scale.y;
+        // y in Unity
+        primitive.dimensions[primitive.BOX_Z] = object.scale.z;
+        scene_object.primitives.push_back(primitive);
+
+        // define the pose
+        // PLANNING_FRAME is positioned at (0,0,0) for both side so no
+        // transformation needed
+        scene_object.pose.orientation = object.orientation;
+        scene_object.pose.position = object.position;
+
+        // Add the message to the list of messages to be sent
+        scene_objects_list.push_back(scene_object);
+    }
+
+    // Gripper padding
+    shape_msgs::SolidPrimitive gripper_padding;
+    gripper_padding.type = gripper_padding.BOX;
+    gripper_padding.dimensions = {0.05, 0.04, 0.12};
+
+    geometry_msgs::Pose padding_pose;
+    padding_pose.orientation.w = 1;
+    padding_pose.orientation.x = 0;
+    padding_pose.orientation.y = 0;
+    padding_pose.orientation.z = 0;
+    padding_pose.position.x = 0;
+    padding_pose.position.y = -0.01;
+    padding_pose.position.z = 0.01;
+
+    moveit_msgs::CollisionObject left_gripper_padding;
+    moveit_msgs::CollisionObject right_gripper_padding;
+
+    left_gripper_padding.id = "left_gripper_padding";
+    left_gripper_padding.header.frame_id = "gripper_left_inner_finger";
+    left_gripper_padding.operation = left_gripper_padding.ADD;
+    left_gripper_padding.primitives = {gripper_padding};
+    left_gripper_padding.primitive_poses = {padding_pose};
+
+    right_gripper_padding.id = "right_gripper_padding";
+    right_gripper_padding.header.frame_id = "gripper_right_inner_finger";
+    right_gripper_padding.operation = right_gripper_padding.ADD;
+    right_gripper_padding.primitives = {gripper_padding};
+    right_gripper_padding.primitive_poses = {padding_pose};
+
+    scene_objects_list.push_back(left_gripper_padding);
+    scene_objects_list.push_back(right_gripper_padding);
+    scene_objects_list.push_back(generate_cube(cube_location));
+
+    // Apply the object to planning_scene (Blocking until finished!)
+    planning_scene_interface.applyCollisionObjects(scene_objects_list);
+}
+
+/**
+ * Draw an arrow at each location sent from Unity on RViz.
+ */
+static void generate_markers(const UnityRequest::ConstPtr& message) {
+    auto visual_tool = new rviz_visual_tools::RvizVisualTools(
+        "arm_base_link", "/rviz_visual_markers"
+    );
+    visual_tool->deleteAllMarkers();
+
+    // For each pose, create an arrow for it.
+    visual_tool->publishArrow(
+        message->pre_pick_location, rviz_visual_tools::RED
+    );
+    visual_tool->publishArrow(message->pick_location, rviz_visual_tools::GREEN);
+    visual_tool->publishArrow(
+        message->pre_place_location, rviz_visual_tools::BLUE
+    );
+    visual_tool->publishArrow(
+        message->place_location, rviz_visual_tools::YELLOW
+    );
+    visual_tool->trigger();
+}
+
+static int planning_no_cache(
+    MoveGroupInterface&   move_group_interface,
+    PlanningSceneStorage& planning_scene_storage,
+    const std::string&    scene_name,
+    PathSection           path_section
+) {
+    while (move_group_interface.move() != MoveItStatus::SUCCESS);
+
+    return 0;
+}
+
+/**
  * Adapter for planning and executing a trajectory, with profiling.
  * This function will NOT write, nor use, motion planning cache.
  *
  * Return 0 on sucessfully executing the trajectory, -1 otherwise.
  */
 static int planning_with_profiling(
-    MoveGroupInterface&   arm_move_group_interface,
+    MoveGroupInterface&   move_group_interface,
     PlanningSceneStorage& planning_scene_storage,
     const std::string&    scene_name,
     PathSection           section
@@ -175,30 +239,49 @@ static int planning_with_profiling(
     ROS_INFO("Using a profiled motion planning adapter");
     Plan plan = Plan();
 
-    while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-        total_attempts += 1;
-        failed_attempts += 1;
+    // do not profile untracked section
+    if (section == PathSection::Untracked) {
+        return planning_no_cache(
+            move_group_interface, planning_scene_storage, scene_name, section
+        );
     }
 
-    total_attempts += 1;
-    planning_time += plan.planning_time_;
+    while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+        total_attempts[section] += 1;
+        failed_attempts[section] += 1;
+    }
+
+    total_attempts[section] += 1;
+    planning_time[section] += plan.planning_time_;
     const std::vector<std::string> joint_names =
         plan.trajectory_.joint_trajectory.joint_names;
 
     for (const auto waypoints : plan.trajectory_.joint_trajectory.points) {
         for (int i = 0; i < 6; i++) {
             const auto joint_name = joint_names[i];
-            total_joint_trajectory[joint_name] +=
+            total_joint_trajectory[section][joint_name] +=
                 abs(waypoints.positions[i] -
-                    previous_joint_position[joint_name]);
-            previous_joint_position[joint_name] = waypoints.positions[i];
+                    previous_joint_position[section][joint_name]);
+            previous_joint_position[section][joint_name] =
+                waypoints.positions[i];
         }
     }
 
+    EnergyData package = {
+        .use_estimation = use_energy_estimation
+    };
+    
+    start_energy_recording(&package);
+
     // execute the plan
-    if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+    if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
         return -1;
     }
+
+    std::pair<double, double> result = stop_energy_recording(&package);
+
+    energy_consumed[section] = result.first;
+    braking_energy[section] = result.second;
 
     return 0;
 }
@@ -209,26 +292,18 @@ static int planning_with_profiling(
  * Return 0 on success, and -1 otherwise.
  */
 static int planning_no_profiling(
-    MoveGroupInterface&   arm_move_group_interface,
+    MoveGroupInterface&   move_group_interface,
     PlanningSceneStorage& planning_scene_storage,
     const std::string&    scene_name,
     PathSection           section
 ) {
-    ROS_INFO("Using no-profiling planning adapter");
+    ROS_INFO("Using cache-based planning adapter");
 
     // Do not try the cache for untracked sections
     if (section == PathSection::Untracked) {
-        Plan plan = Plan();
-
-        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
-            continue;
-        }
-
-        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
-            return -1;
-        }
-
-        return 0;
+        return planning_no_cache(
+            move_group_interface, planning_scene_storage, scene_name, section
+        );
     }
 
     std::vector<moveit_warehouse::RobotTrajectoryWithMetadata> plan_results;
@@ -259,16 +334,16 @@ static int planning_no_profiling(
         // Create a plan
         Plan              plan = Plan();
         MotionPlanRequest plan_request = MotionPlanRequest();
-        arm_move_group_interface.constructMotionPlanRequest(plan_request);
+        move_group_interface.constructMotionPlanRequest(plan_request);
 
         ROS_INFO("Cannot find a cached motion. Creating a new motion plan.");
 
-        while (arm_move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
+        while (move_group_interface.plan(plan) != MoveItStatus::SUCCESS) {
             continue;
         }
 
         // Execute the plan
-        if (arm_move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
+        if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
             return -1;
         }
 
@@ -305,13 +380,13 @@ static int planning_no_profiling(
     } else {
         ROS_INFO("Found a cached motion plan. Using it instead of planning.");
         // Use the plan.
-        // [TODO]: The plan may fail due to scene changes. Figure out a way to
+        // [FIXME]: The plan may fail due to scene changes. Figure out a way to
         // update the plan. The failure may happen after the robot moved away
         // from the starting position is the problem.
         const moveit_msgs::RobotTrajectory cached_trajectory =
             *plan_results[0].get();
 
-        if (arm_move_group_interface.execute(cached_trajectory) !=
+        if (move_group_interface.execute(cached_trajectory) !=
             MoveItStatus::SUCCESS) {
             return -1;
         }
@@ -324,16 +399,19 @@ static int planning_no_profiling(
  * Write the result into log. Back up in case for some reason we cannot open the
  * csv.
  */
-static void write_log_result() {
-    ROS_INFO("Total planning time: %.5f", planning_time);
-    for (const auto joint_moved_value : total_joint_trajectory) {
+static void write_log_result(int index) {
+    ROS_INFO("Section: %s", output_names[index]);
+    ROS_INFO("Total planning time: %.6f", planning_time[index]);
+    for (const auto joint_moved_value : total_joint_trajectory[index]) {
         ROS_INFO(
-            "%s expected to move %.5f radians", joint_moved_value.first.c_str(),
+            "%s expected to move %.6f radians", joint_moved_value.first.c_str(),
             joint_moved_value.second
         );
     }
-    ROS_INFO("Failed planning attempts: %d", failed_attempts);
-    ROS_INFO("Total attempts: %d", total_attempts);
+    ROS_INFO("Failed planning attempts: %d", failed_attempts[index]);
+    ROS_INFO("Total attempts: %d", total_attempts[index]);
+    ROS_INFO("Power consumed: %.6f", energy_consumed[index]);
+    ROS_INFO("Braking power dissipated: %.6f", braking_energy[index]);
 }
 
 /**
@@ -341,52 +419,302 @@ static void write_log_result() {
  *
  * If the csv cannot be opened, echo result into the console.
  */
-static void write_result() {
+static void write_result(void) {
+    FILE* file_handle;
+    int   index = -1;
     // C-style since that's what I am familiar with
-    const FILE* is_handle_exist = fopen("result.csv", "r");
-    FILE*       result_file_handle;
+    for (const char* filename : output_names) {
+        index++;
+        file_handle = fopen(filename, "r");
 
-    // we did not create the file.
-    if (is_handle_exist == NULL) {
-        result_file_handle = fopen("result.csv", "a");
+        // The file was not initialized
+        if (file_handle == NULL) {
+            file_handle = fopen(filename, "w");
 
-        if (result_file_handle == NULL) {
-            // write to log
-            write_log_result();
-            return;
+            // cannot open this as write for some reason...
+            if (file_handle == NULL) {
+                write_log_result(index);
+                continue;
+            }
+
+            // Write the header
+            fprintf(
+                file_handle,
+                "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_"
+                "attempts,power_consumed,braking_power_dissipated\n",
+                associated_joint_name[0].c_str(),
+                associated_joint_name[1].c_str(),
+                associated_joint_name[2].c_str(),
+                associated_joint_name[3].c_str(),
+                associated_joint_name[4].c_str(),
+                associated_joint_name[5].c_str()
+            );
+        } else {
+            fclose(file_handle);
+            file_handle = fopen(filename, "a");
+
+            if (file_handle == NULL) {
+                write_log_result(index);
+                continue;
+            }
         }
 
+        // Write results
+        // planning time
+        fprintf(file_handle, "%.6f,", planning_time[index]);
+        // joint movement
+        for (int joint_index = 0; joint_index < 6; joint_index++) {
+            fprintf(
+                file_handle, "%.6f,",
+                total_joint_trajectory[index]
+                                      [associated_joint_name[joint_index]]
+            );
+        }
+        // attempts
         fprintf(
-            result_file_handle,
-            "planning_time,%s,%s,%s,%s,%s,%s,failed_attempts,total_attempts\n",
-            associated_joint_name[0].c_str(), associated_joint_name[1].c_str(),
-            associated_joint_name[2].c_str(), associated_joint_name[3].c_str(),
-            associated_joint_name[4].c_str(), associated_joint_name[5].c_str()
+            file_handle, "%d,%d,", failed_attempts[index], total_attempts[index]
         );
+        // power
+        fprintf(
+            file_handle, "%.6f,%.6f\n", energy_consumed[index],
+            braking_energy[index]
+        );
+        // flush and close stream
+        fclose(file_handle);
+    }
+}
+
+void init_bridge(const ros::NodeHandle& node_handle) {
+    node_handle.param("/unity_bridge/parallel_planners", parallel_planners, 4);
+    node_handle.param("/unity_bridge/planning_timeout", plan_timeout, 30.0);
+    node_handle.param("/unity_bridge/replan_attempt", replan_attempt, 5);
+    node_handle.param("/unity_bridge/replan_delay", replan_delay, 1.0);
+
+    node_handle.param(
+        "/unity_bridge/main_planner_pipeline", main_pipeline,
+        std::string("ompl")
+    );
+    if (main_pipeline == "ompl") {
+        node_handle.param(
+            "/unity_bridge/main_planner_id", main_planner,
+            std::string("RRTConnect")
+        );
+    }
+    node_handle.param(
+        "/unity_bridge/side_planner_pipeline", side_pipeline,
+        std::string("ompl")
+    );
+    if (side_pipeline == "ompl") {
+        node_handle.param(
+            "/unity_bridge/side_planner_id", side_planner,
+            std::string("RRTConnect")
+        );
+    }
+
+    bool use_cached_path, profiling;
+    node_handle.param("/unity_bridge/use_cached_path", use_cached_path, false);
+    node_handle.param("/unity_bridge/profiling", profiling, false);
+
+    // Profiling take highest precedence
+    if (profiling) {
+        planner_adapter = planning_with_profiling;
+    }
+    // Then caching
+    else if (use_cached_path) {
+        planner_adapter = planning_no_profiling;
     } else {
-        result_file_handle = fopen("result.csv", "a");
+        planner_adapter = planning_no_cache;
+    }
 
-        if (result_file_handle == NULL) {
-            // write to log
-            write_log_result();
+    node_handle.param(
+        "/unity_bridge/generate_pick_place_marker", generate_marker, false
+    );
+
+    node_handle.param("/warehouse_port", db_info.port, 1234);
+    node_handle.param(
+        "/warehouse_host", db_info.hostname, std::string("localhost")
+    );
+
+    node_handle.param("/unity_bridge/use_energy_estimation", use_energy_estimation, false);
+}
+
+static void switch_main_planner(MoveGroupInterface& move_group_interface) {
+    move_group_interface.setPlanningPipelineId(main_pipeline);
+    if (!main_planner.empty()) {
+        move_group_interface.setPlannerId(main_planner);
+    } else {
+        move_group_interface.setPlannerId(
+            move_group_interface.getDefaultPlannerId()
+        );
+    }
+}
+
+static void switch_side_planner(MoveGroupInterface& move_group_interface) {
+    move_group_interface.setPlanningPipelineId(side_pipeline);
+    if (!side_pipeline.empty()) {
+        move_group_interface.setPlannerId(side_planner);
+    } else {
+        move_group_interface.setPlannerId(
+            move_group_interface.getDefaultPlannerId()
+        );
+    }
+}
+
+static void bridge_request_handler_internal(
+    const UnityRequest::ConstPtr message,
+    const ros::Publisher&        gripper_control_publisher,
+    MoveGroupInterface&          move_group_interface,
+    PlanningSceneInterface&      planning_scene_interface,
+    PlanningSceneStorage&        planning_scene_storage
+) {
+    // Gripper messages
+    GripperControl gripper_open = GripperControl();
+    gripper_open.gripper_angle = -0.20f;
+    GripperControl gripper_close = GripperControl();
+    gripper_close.gripper_angle = 0.32f;
+    GripperControl gripper_neutral = GripperControl();
+    gripper_neutral.gripper_angle = 0.0f;
+
+    // Let's start plan and execute!
+    // Pre-Grasp pose
+    ROS_INFO("Planning and executing pre-pick pose");
+    switch_main_planner(move_group_interface);
+    move_group_interface.setPoseTarget(
+        message->pre_pick_location, "arm_tcp_link"
+    );
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::PrePick
+        ) != 0) {
+        ROS_ERROR("Failed to move to pre_grasp pose, exiting");
+        return;
+    }
+    ROS_INFO("Pre-grasp pose executed");
+
+    // Open gripper
+    GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_open);
+    ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
+
+    // Pick pose
+    ROS_INFO("Planning and executing pick pose");
+    switch_side_planner(move_group_interface);
+    move_group_interface.setPoseTarget(message->pick_location, "arm_tcp_link");
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
+        ROS_ERROR("Failed to move to pick pose, exiting");
+        return;
+    }
+    ROS_INFO("Pick pose executed");
+
+    // Close the gripper
+    GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_close);
+    ROS_INFO("Gripper closed");
+    GRIPPER_CONTROL_DELAY.sleep();
+
+    // Attach to arm_tcp_link; safe self-collision with gripper fingers
+    move_group_interface.attachObject(
+        "CUBE", "arm_tcp_link",
+        {"gripper_right_inner_finger", "gripper_left_inner_finger"}
+    );
+
+    // Pickup Pose
+    ROS_INFO("Planning and executing pickup pose");
+    switch_side_planner(move_group_interface);
+    move_group_interface.setPoseTarget(
+        message->pre_pick_location, "arm_tcp_link"
+    );
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
+        ROS_ERROR("Failed to move to pickup pose, exiting");
+        return;
+    }
+    ROS_INFO("Pickup pose executed");
+
+    // Pre-place Pose
+    ROS_INFO("Planning and executing pre-place pose");
+    switch_main_planner(move_group_interface);
+    move_group_interface.setPoseTarget(
+        message->pre_place_location, "arm_tcp_link"
+    );
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::PrePlace
+        ) != 0) {
+        ROS_ERROR("Failed to move to pre_place pose, exiting");
+        return;
+    }
+    ROS_INFO("Pre-place pose executed");
+
+    // Place Pose
+    ROS_INFO("Planning and executing place pose");
+    switch_side_planner(move_group_interface);
+    move_group_interface.setPoseTarget(message->place_location, "arm_tcp_link");
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
+        ROS_ERROR("Failed to move to place pose, exiting");
+        return;
+    }
+    ROS_INFO("Place pose executed");
+
+    // Open the gripper
+    GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_open);
+    ROS_INFO("Gripper opened");
+    GRIPPER_CONTROL_DELAY.sleep();
+
+    // Detach the cube from the arm, and remove the cube from the scene.
+    move_group_interface.detachObject("CUBE");
+    planning_scene_interface.removeCollisionObjects({"CUBE"});
+
+    // Lift-up Pose
+    ROS_INFO("Planning and executing lift-up pose");
+    switch_side_planner(move_group_interface);
+    move_group_interface.setPoseTarget(
+        message->pre_place_location, "arm_tcp_link"
+    );
+    if (planner_adapter(
+            move_group_interface, planning_scene_storage,
+            message->scene_name.data, PathSection::Untracked
+        ) != 0) {
+        ROS_ERROR("Failed to move to lift-up pose, exiting");
+        return;
+    }
+    ROS_INFO("Lift-up pose executed");
+
+    // Return gripper to neutral
+    GRIPPER_CONTROL_DELAY.sleep();
+    gripper_control_publisher.publish(gripper_neutral);
+    ROS_INFO("Gripper returned to neutral state.");
+
+    // Return to starting position
+    {
+        std::vector<double> joint_group_position;
+        joint_group_position.resize(6, 0);
+        switch_main_planner(move_group_interface);
+        move_group_interface.setJointValueTarget(joint_group_position);
+        if (planner_adapter(
+                move_group_interface, planning_scene_storage,
+                message->scene_name.data, PathSection::Home
+            ) != 0) {
+            ROS_ERROR("Failed to move to all-zero pose, exiting");
             return;
         }
     }
+    ROS_INFO("All-zero pose executed");
+    ROS_INFO("Pick and Place task finished.");
 
-    // Write the result
-    fprintf(result_file_handle, "%.6f,", planning_time);
-
-    for (int i = 0; i < 6; i++) {
-        fprintf(
-            result_file_handle, "%.6f,",
-            total_joint_trajectory[associated_joint_name[i]]
-        );
+    if (planner_adapter == planning_with_profiling) {
+        write_result();
     }
-
-    fprintf(result_file_handle, "%d,%d\n", failed_attempts, total_attempts);
-
-    // Flush the result into file
-    fflush(result_file_handle);
 }
 
 /**
@@ -406,196 +734,88 @@ static void write_result() {
  * - Pull the gripper up.
  * - Return the robot to all-zero position.
  */
-void unity_targets_subs_handler(
-    const UnityRequest::ConstPtr& message,
-    const ros::Publisher          gripper_control_publisher
+void bridge_request_handler(
+    const UnityRequest::ConstPtr message,
+    const ros::Publisher&        gripper_control_publisher,
+    const ros::Publisher&        dyn_object_sync
 ) {
     ROS_INFO("Received planning request from Unity.");
 
     const DbConnectionPtr DB_CONNECTION = moveit_warehouse::loadDatabase();
 
-    // [FIXME]: Take the parameter from rosparam instead of hardcoded.
-    DB_CONNECTION->setParams("localhost", 1234);
+    DB_CONNECTION->setParams(db_info.hostname, db_info.port);
     if (!DB_CONNECTION->connect()) {
         ROS_ERROR("Cannot connect to warehouse");
         return;
     }
 
-    // Gripper messages
-    GripperControl gripper_open = GripperControl();
-    gripper_open.gripper_angle = -0.20f;
-    GripperControl gripper_close = GripperControl();
-    gripper_close.gripper_angle = 0.32f;
-    GripperControl gripper_neutral = GripperControl();
-    gripper_neutral.gripper_angle = 0.0f;
+    MoveGroupInterface     move_group_interface("robot_arm");
+    PlanningSceneInterface planning_scene_interface;
+    PlanningSceneStorage   planning_scene_storage(DB_CONNECTION);
 
-    MoveGroupInterface                 move_group_interface(ARM_PLANNING_GROUP);
-    PlanningSceneInterface             planning_scene_interface;
-    PlanningSceneStorage               planning_scene_storage(DB_CONNECTION);
-
-    const moveit_msgs::CollisionObject the_cube =
-        generate_cube(message->pick_location);
-
-    // [DEBUG]: Show the location of all poses on rviz
-    // generate_markers(message);
+    if (generate_marker) {
+        generate_markers(message);
+    }
 
     // Allow replanning if scene change, would come in useful in dynamic object
     // scenario?
     move_group_interface.allowReplanning(true);
-    // Allow replan attempt in case the planner simply didnt find a path, there
-    // are time when it does that
-    move_group_interface.setNumPlanningAttempts(PLANNING_ATTEMPTS);
-    // Maximum 10s per attempt
-    move_group_interface.setPlanningTime(TIME_PER_ATTEMPT);
+    // How many replan attempt can the robot try?
+    move_group_interface.setReplanAttempts(replan_attempt);
+    move_group_interface.setReplanDelay(replan_delay);
 
-    // [DEBUG]: check Unity joint control script
-    // debug_joint(move_group_interface);
+    // How many planner instance can we run in parallel?
+    move_group_interface.setNumPlanningAttempts(parallel_planners);
+    // Time waiting before we timeout the planners?
+    move_group_interface.setPlanningTime(plan_timeout);
 
-    // Set execution mode (With/Without profiling)
-    // [TODO]: Expose this as an option
-    auto planning_call = planning_no_profiling;
-    // Initialize maps
-    for (const std::string joint_name : associated_joint_name) {
-        total_joint_trajectory[joint_name] = 0;
-        previous_joint_position[joint_name] = 0;
+    // Reset stat counters
+    for (int index = 0; index < 3; index++) {
+        // Joint movement
+        for (const std::string joint_name : associated_joint_name) {
+            total_joint_trajectory[index][joint_name] = 0;
+            previous_joint_position[index][joint_name] = 0;
+        }
+
+        // Time
+        planning_time[index] = 0;
+
+        // Attempts
+        total_attempts[index] = 0;
+        failed_attempts[index] = 0;
+
+        // Energy
+        energy_consumed[index] = 0;
+        braking_energy[index] = 0;
     }
 
     // Build the planning scene
-    update_planning_scene(message->static_objects, planning_scene_interface);
+    update_planning_scene(
+        message->pick_location, message->initial_objects,
+        planning_scene_interface
+    );
+
+    std_msgs::Empty empty_msg;
+    dyn_object_sync.publish(empty_msg);
     ROS_INFO("Planning Scene updated with static objects.");
 
-    // Let's start plan and execute!
-    // Pre-Grasp pose
-    ROS_INFO("Planning and executing pre-grasp pose");
-    move_group_interface.setPoseTarget(
-        message->pre_pick_location, "arm_tcp_link"
-    );
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::PrePick
-        ) != 0) {
-        ROS_ERROR("Failed to move to pre_grasp pose, exiting");
-        return;
-    }
-    ROS_INFO("Pre-grasp pose executed");
-
-    // Open gripper
-    gripper_control_publisher.publish(gripper_open);
-    GRIPPER_CONTROL_DELAY.sleep();
-    ROS_INFO("Gripper opened");
-
-    // Pick pose
-    ROS_INFO("Planning and executing pick pose");
-    move_group_interface.setPoseTarget(message->pick_location, "arm_tcp_link");
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::Untracked
-        ) != 0) {
-        ROS_ERROR("Failed to move to pick pose, exiting");
-        return;
-    }
-    ROS_INFO("Pick pose executed");
-
-    // Close the gripper
-    gripper_control_publisher.publish(gripper_close);
-    GRIPPER_CONTROL_DELAY.sleep();
-    ROS_INFO("Gripper closed");
-
-    // Add cube to PlanningScene
-    planning_scene_interface.applyCollisionObject(the_cube);
-    // Attach to arm_tcp_link, specifying safe self-collision with gripper
-    // fingers
+    // Attach gripper padding
     move_group_interface.attachObject(
-        "CUBE", "arm_tcp_link",
-        {"gripper_right_inner_finger", "gripper_left_inner_finger"}
+        "left_gripper_padding", "gripper_left_inner_finger",
+        {"gripper_left_inner_knuckle", "gripper_left_outer_knuckle",
+         "gripper_left_inner_finger"}
+    );
+    move_group_interface.attachObject(
+        "right_gripper_padding", "gripper_right_inner_finger",
+        {"gripper_right_inner_knuckle", "gripper_right_outer_knuckle",
+         "gripper_right_inner_finger"}
     );
 
-    // Pickup Pose
-    ROS_INFO("Planning and executing pickup pose");
-    move_group_interface.setPoseTarget(
-        message->pre_pick_location, "arm_tcp_link"
+    bridge_request_handler_internal(
+        message, gripper_control_publisher, move_group_interface,
+        planning_scene_interface, planning_scene_storage
     );
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::Untracked
-        ) != 0) {
-        ROS_ERROR("Failed to move to pickup pose, exiting");
-        return;
-    }
-    ROS_INFO("Pickup pose executed");
 
-    // Pre-place Pose
-    ROS_INFO("Planning and executing pre-place pose");
-    move_group_interface.setPoseTarget(
-        message->pre_place_location, "arm_tcp_link"
-    );
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::PrePlace
-        ) != 0) {
-        ROS_ERROR("Failed to move to pre_place pose, exiting");
-        return;
-    }
-    ROS_INFO("Pre-place pose executed");
-
-    // Place Pose
-    ROS_INFO("Planning and executing place pose");
-    move_group_interface.setPoseTarget(message->place_location, "arm_tcp_link");
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::Untracked
-        ) != 0) {
-        ROS_ERROR("Failed to move to place pose, exiting");
-        return;
-    }
-    ROS_INFO("Place pose executed");
-
-    // Open the gripper
-    gripper_control_publisher.publish(gripper_open);
-    GRIPPER_CONTROL_DELAY.sleep();
-    ROS_INFO("Gripper opened");
-
-    // Detach the cube from the arm, and remove the cube from the scene.
-    move_group_interface.detachObject("CUBE");
-    planning_scene_interface.removeCollisionObjects({"CUBE"});
-
-    // Lift-up Pose
-    ROS_INFO("Planning and executing lift-up pose");
-    move_group_interface.setPoseTarget(
-        message->pre_place_location, "arm_tcp_link"
-    );
-    if (planning_call(
-            move_group_interface, planning_scene_storage,
-            message->scene_name.data, PathSection::Untracked
-        ) != 0) {
-        ROS_ERROR("Failed to move to lift-up pose, exiting");
-        return;
-    }
-    ROS_INFO("Lift-up pose executed");
-
-    // Return gripper to neutral
-    gripper_control_publisher.publish(gripper_neutral);
-    GRIPPER_CONTROL_DELAY.sleep();
-    ROS_INFO("Gripper returned to neutral state.");
-
-    // Return to starting position
-    {
-        std::vector<double> joint_group_position;
-        joint_group_position.resize(6, 0);
-        move_group_interface.setJointValueTarget(joint_group_position);
-        if (planning_call(
-                move_group_interface, planning_scene_storage,
-                message->scene_name.data, PathSection::Home
-            ) != 0) {
-            ROS_ERROR("Failed to move to all-zero pose, exiting");
-            return;
-        }
-    }
-    ROS_INFO("All-zero pose executed");
-    ROS_INFO("Pick and Place task finished.");
-
+    dyn_object_sync.publish(empty_msg);
     planning_scene_interface.clear();
-
-    // Write result to file
-    write_result();
 }
