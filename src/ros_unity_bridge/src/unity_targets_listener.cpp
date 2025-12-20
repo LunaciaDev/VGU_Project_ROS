@@ -1,4 +1,3 @@
-#include <boost/smart_ptr/shared_ptr.hpp>
 #include <unordered_map>
 
 #include "common.hpp"
@@ -11,10 +10,8 @@
 #include "ros/console.h"
 #include "ros/duration.h"
 #include "ros/node_handle.h"
-#include "ros/topic.h"
 #include "ros_unity_messages/GripperControl.h"
 #include "ros_unity_messages/UnityObject.h"
-#include "rtde_echo/RtdeData.h"
 #include "rviz_visual_tools/rviz_visual_tools.h"
 #include "std_msgs/Empty.h"
 #include "warehouse_ros/database_connection.h"
@@ -48,6 +45,7 @@ static int         parallel_planners;
 static double      plan_timeout;
 static double      replan_delay;
 static int         replan_attempt;
+static bool        use_energy_estimation;
 static std::string main_pipeline;
 static std::string side_pipeline;
 static std::string main_planner;
@@ -269,43 +267,21 @@ static int planning_with_profiling(
         }
     }
 
-    // Grab current power data
-    boost::shared_ptr<const rtde_echo::RtdeData> data =
-        ros::topic::waitForMessage<rtde_echo::RtdeData>(
-            "/unity_bridge/rtde_data"
-        );
-
-    double before_energy, before_brake;
-
-    if (data) {
-        before_brake = data->braking_energy_dissipated;
-        before_energy = data->energy_consumed;
-    } else {
-        ROS_ERROR(
-            "rtde_echo node abnormality or this node is shutting down, cannot "
-            "collect data"
-        );
-    }
+    EnergyData package = {
+        .use_estimation = use_energy_estimation
+    };
+    
+    start_energy_recording(&package);
 
     // execute the plan
     if (move_group_interface.execute(plan) != MoveItStatus::SUCCESS) {
         return -1;
     }
 
-    data = ros::topic::waitForMessage<rtde_echo::RtdeData>(
-        "/unity_bridge/rtde_data"
-    );
+    std::pair<double, double> result = stop_energy_recording(&package);
 
-    if (data) {
-        energy_consumed[section] = data->energy_consumed - before_energy;
-        braking_energy[section] =
-            data->braking_energy_dissipated - before_brake;
-    } else {
-        ROS_ERROR(
-            "rtde_echo node abnormality or this node is shutting down, cannot "
-            "collect data"
-        );
-    }
+    energy_consumed[section] = result.first;
+    braking_energy[section] = result.second;
 
     return 0;
 }
@@ -558,6 +534,8 @@ void init_bridge(const ros::NodeHandle& node_handle) {
     node_handle.param(
         "/warehouse_host", db_info.hostname, std::string("localhost")
     );
+
+    node_handle.param("/unity_bridge/use_energy_estimation", use_energy_estimation, false);
 }
 
 static void switch_main_planner(MoveGroupInterface& move_group_interface) {
@@ -734,8 +712,9 @@ static void bridge_request_handler_internal(
     ROS_INFO("All-zero pose executed");
     ROS_INFO("Pick and Place task finished.");
 
-    // Write result to file
-    write_result();
+    if (planner_adapter == planning_with_profiling) {
+        write_result();
+    }
 }
 
 /**

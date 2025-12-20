@@ -25,4 +25,13 @@ void dyn_object_handler(
 
 void init_bridge(const ros::NodeHandle& node_handle);
 
+struct EnergyData {
+    double move_energy;
+    double brake_energy;
+    bool   use_estimation;
+};
+
+void start_energy_recording(struct EnergyData* data_package);
+std::pair<double, double> stop_energy_recording(const struct EnergyData* data_package);
+
 #endif
