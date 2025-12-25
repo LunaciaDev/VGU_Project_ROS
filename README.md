@@ -7,7 +7,7 @@ The goal of the project is to design a planning system that take control of the 
 The repositories that are part of the project are listed below:
 
 - ROS: [https://github.com/LunaciaDev/VGU_Project_ROS](https://github.com/LunaciaDev/VGU_Project_ROS)
-- Unity Simulation: [https://github.com/LunaciaDev/VGU_Project_Unity](https://github.com/LunaciaDev/VGU_Project_ROS)
+- Unity Simulation: [https://github.com/LunaciaDev/VGU_Project_Unity](https://github.com/LunaciaDev/VGU_Project_Unity)
 
 # Warning
 
